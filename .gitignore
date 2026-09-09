@@ -1,0 +1,7 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Office 暫存檔
+~$*.docx
+~$*.xlsx

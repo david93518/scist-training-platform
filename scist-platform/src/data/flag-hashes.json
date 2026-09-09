@@ -1,0 +1,65 @@
+{
+  "robots-and-secrets": [
+    "dd223f396d8caee5e7c05baf169f9323dcd3c591cf098624885f86ff137f887a"
+  ],
+  "cookie-monster": [
+    "df8de3bd51770ddcb6d5d0c9f3f792ecce30a6245e7cc80feba5a7eb22900f20"
+  ],
+  "header-hunter": [
+    "169cfc1951c1e5332eebb6d40eaf63e5a3b350c215ec931ee9ddeaf650557721"
+  ],
+  "sql-login-bypass": [
+    "a25690a36233ca693d76c16a701a4880f2a5f3b04fbecabd9d767e32322f263b"
+  ],
+  "caesar-salad": [
+    "98b9f229648218859ffc5bf5e6a94daba431ef0df08149de1c090b4fcb30af58"
+  ],
+  "base64-onion": [
+    "9fe828aa9c9d89cdcc32d11b55900c6f91ef91ffe4bb4b99b345a62ab59f5eaf"
+  ],
+  "xor-one-byte": [
+    "8f67f365edf22ac975d27528b689d7539f1af44c75064881b584c280bd60d83f"
+  ],
+  "strings-hunt": [
+    "39cb8167bd167d6fbe7b55d248944ab2346d4cb64d6fe6fc5815af9043f822d7"
+  ],
+  "hidden-in-home": [
+    "201c2cc60d2c6aed429f61384949e38b5406dda7ae6202a93b9fd9f2d6ca496c",
+    "91e1d4f2a4c5a0de40021efbeec7bce0de587f4324f9545d276e1b7324314289"
+  ],
+  "gatekeeper": [
+    "9b5e4e384980cb22c65db72f62f77a1373ab3ebabb60aef8270a5d97eeee49d8",
+    "1ce1a3d76f55180e037a18587c431f6dc11d7b6f0288c58496f70a6f43be01ff"
+  ],
+  "ret2win": [
+    "c3cca6515dc75663a3bfa66967bf2b0034af84d50d2b900f5d0bc7e45ee11cf3"
+  ],
+  "ssti-cafe": [
+    "ce3fbd0e69ecb35b6dec830bd636653bd3cfdd8674f355036d0d18f41ee65c1e"
+  ],
+  "rsa-baby": [
+    "f69a526a779969d94adaeab8a464ed77c4604a1e52f594e12ef48a69b1eee21b"
+  ],
+  "packet-whisper": [
+    "b7d11ebfed7cf7a251d77e40544cc03a8662caa0bba7d1e972b41452c0eb8604"
+  ],
+  "bamboo": [
+    "88b2f5922a7886370e7d7eed1cd824a602ece0cdfc3b6d8fc72dc38c1a9f567c",
+    "98e474e053bd8436891cf016e275153cf78b5f71e56f40c3ec723fe959b207bc"
+  ],
+  "jwt-none": [
+    "c84b06bf15998cf3d34d70d667bede28ac5ec35f12c795d4f3b2a9909dc8f8cb"
+  ],
+  "heap-garden": [
+    "3ad0fc1e298ff922ac3bac0f2b7d4725abac96b97bf4d880b70b4aec1f58096b"
+  ],
+  "steg-sunset": [
+    "a99395680fcb4e7010cd997188b418f03979db61b3042b9c2cac33d462d4439b"
+  ],
+  "osint-tainan": [
+    "ea2abc782c2cb015fc6e3eb95b871a25bd43f883f482fbb4c94b47f7fff0bca1"
+  ],
+  "crackme-zero": [
+    "d1d1f145e940fb6013a3ae160705d81d8729ee752b279cfb48102dea9fc923ed"
+  ]
+}
