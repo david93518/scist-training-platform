@@ -4,7 +4,7 @@ import { PlayerRow } from "@/components/leaderboard/player-row";
 import { HexField } from "@/components/ui/hex-field";
 import type { Player } from "@/data/players";
 import { schoolById } from "@/data/schools";
-import { RANKS, rankFor } from "@/lib/xp";
+import { ladder, rankFor, type Rank } from "@/lib/xp";
 import { formatNumber } from "@/lib/utils";
 
 const PODIUM = [
@@ -13,7 +13,8 @@ const PODIUM = [
   { place: 3, color: "#d98a4f", size: 64, height: 56 },
 ];
 
-export function LeaderboardPreview({ players }: { players: Player[] }) {
+export function LeaderboardPreview({ players, ranks }: { players: Player[]; ranks?: Rank[] }) {
+  const ladderRanks = ladder(ranks);
   const weekly = [...players].sort((a, b) => b.weeklyXp - a.weeklyXp);
   const top3 = weekly.slice(0, 3);
   const rest = weekly.slice(3, 7);
@@ -33,12 +34,12 @@ export function LeaderboardPreview({ players }: { players: Player[] }) {
           <div>
             <SectionHeading
               label="RANKS"
-              title="從新手到傳說，七個階級"
+              title={"從" + ladderRanks[0].name + "到" + ladderRanks[ladderRanks.length - 1].name + "，" + ladderRanks.length + " 個階級"}
               desc="XP 來自看課、答對檢查站、解題。用提示會扣分，這是刻意的，我們希望你先自己想。"
             />
 
             <div className="mt-10 flex flex-col gap-2">
-              {RANKS.map((r, i) => (
+              {ladderRanks.map((r, i) => (
                 <div
                   key={r.id}
                   className="reveal flex items-center gap-4 rounded-2xl border border-transparent px-3 py-2.5 transition-colors hover:border-white/[0.07] hover:bg-white/[0.03]"
@@ -93,7 +94,7 @@ export function LeaderboardPreview({ players }: { players: Player[] }) {
                   const player = top3[p.place - 1];
                   if (!player) return null;
                   const school = schoolById(player.schoolId);
-                  const rank = rankFor(player.xp);
+                  const rank = rankFor(player.xp, ladderRanks);
                   return (
                     <div key={p.place} className="flex flex-col items-center">
                       <div className="relative">
@@ -148,7 +149,7 @@ export function LeaderboardPreview({ players }: { players: Player[] }) {
 
             <div className="border-t border-white/[0.06]">
               {rest.map((p, i) => (
-                <PlayerRow key={p.id} player={p} place={i + 4} metric="weekly" />
+                <PlayerRow key={p.id} player={p} place={i + 4} metric="weekly" ranks={ladderRanks} />
               ))}
             </div>
 

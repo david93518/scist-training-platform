@@ -22,23 +22,37 @@ export const RANKS: Rank[] = [
   { id: "legend", name: "傳說", en: "Legend", minXp: 15000, color: "#ff6fb5", blurb: "18 校聯防都知道的名字" },
 ];
 
-export function rankFor(xp: number): Rank {
-  let r = RANKS[0];
-  for (const rank of RANKS) if (xp >= rank.minXp) r = rank;
+/**
+ * The ladder the admin configured (settings.ranks), falling back to RANKS.
+ * Thresholds are editable in the admin, so the order is not guaranteed.
+ */
+export function ladder(ranks?: Rank[] | null): Rank[] {
+  const list = ranks?.length ? ranks : RANKS;
+  return [...list].sort((a, b) => a.minXp - b.minXp);
+}
+
+export function rankFor(xp: number, ranks?: Rank[] | null): Rank {
+  const list = ladder(ranks);
+  let r = list[0];
+  for (const rank of list) if (xp >= rank.minXp) r = rank;
   return r;
 }
 
-export function nextRank(xp: number): Rank | null {
-  const idx = RANKS.findIndex((r) => r.id === rankFor(xp).id);
-  return RANKS[idx + 1] ?? null;
+export function nextRank(xp: number, ranks?: Rank[] | null): Rank | null {
+  const list = ladder(ranks);
+  const idx = list.findIndex((r) => r.id === rankFor(xp, list).id);
+  return list[idx + 1] ?? null;
 }
 
 /** 0..1 progress from current rank to the next */
-export function rankProgress(xp: number) {
-  const cur = rankFor(xp);
-  const nxt = nextRank(xp);
+export function rankProgress(xp: number, ranks?: Rank[] | null) {
+  const list = ladder(ranks);
+  const cur = rankFor(xp, list);
+  const nxt = nextRank(xp, list);
   if (!nxt) return 1;
-  return (xp - cur.minXp) / (nxt.minXp - cur.minXp);
+  const span = nxt.minXp - cur.minXp;
+  if (span <= 0) return 1;
+  return Math.min(1, Math.max(0, (xp - cur.minXp) / span));
 }
 
 export const DIFFICULTY = {

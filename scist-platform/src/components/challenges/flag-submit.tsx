@@ -44,8 +44,9 @@ export function FlagSubmit({ challenge }: { challenge: Challenge }) {
     if (res.status === "correct" && res.flagId) {
       const spec = challenge.flags.find((f) => f.id === res.flagId);
       const points = res.points ?? spec?.points ?? 0;
+      const refund = res.refunded ? "，退還提示 " + res.refunded + " XP" : "";
       solveFlag(challenge.slug, res.flagId, points, challenge.name);
-      setFeedback({ ok: true, message: res.message + " +" + points + " 分", firstBlood: res.firstBlood });
+      setFeedback({ ok: true, message: res.message + " +" + points + " 分" + refund, firstBlood: res.firstBlood });
       setValue("");
       if (authenticated) void refreshProfile(true);
     } else if (res.status === "already_solved") {

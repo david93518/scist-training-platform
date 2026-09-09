@@ -9,6 +9,7 @@ import { Logo } from "@/components/ui/logo";
 import { buttonClass } from "@/components/ui/primitives";
 import { cn, formatNumber } from "@/lib/utils";
 import { rankFor } from "@/lib/xp";
+import { useRanks } from "@/components/settings-provider";
 import { useProgress, useHydrated } from "@/store/progress";
 
 function subscribeScroll(onChange: () => void) {
@@ -34,7 +35,8 @@ export function SiteHeader() {
   );
   const xp = useProgress((s) => s.xp);
   const hydrated = useHydrated();
-  const rank = rankFor(xp);
+  const ranks = useRanks();
+  const rank = rankFor(xp, ranks);
 
   if (pathname.startsWith("/admin")) return null;
 
@@ -89,7 +91,7 @@ export function SiteHeader() {
               {hydrated ? formatNumber(xp) : "0"}
             </span>
             <span className="text-[11.5px] font-bold" style={{ color: rank.color }}>
-              {hydrated ? rank.name : "新手"}
+              {hydrated ? rank.name : ranks[0]?.name}
             </span>
           </Link>
 

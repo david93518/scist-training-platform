@@ -6,7 +6,8 @@ import { PlayerRow, RankNumber } from "@/components/leaderboard/player-row";
 import { HexAvatar, ProgressBar } from "@/components/ui/primitives";
 import type { Player, SchoolStanding } from "@/data/players";
 import { schoolById } from "@/data/schools";
-import { rankFor, nextRank, rankProgress, RANKS } from "@/lib/xp";
+import { rankFor, nextRank, rankProgress } from "@/lib/xp";
+import { useRanks } from "@/components/settings-provider";
 import { useProgress, useHydrated } from "@/store/progress";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -26,11 +27,12 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
   const userId = useProgress((s) => s.userId);
   const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
+  const ranks = useRanks();
 
   const myXp = hydrated ? xp : 0;
-  const rank = rankFor(myXp);
-  const nxt = nextRank(myXp);
-  const progress = rankProgress(myXp);
+  const rank = rankFor(myXp, ranks);
+  const nxt = nextRank(myXp, ranks);
+  const progress = rankProgress(myXp, ranks);
   // where the reader sits on the all-time board
   const myPlace = players.filter((p) => p.xp > myXp).length + 1;
 
@@ -119,6 +121,7 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
                 place={i + 1}
                 metric={tab === "weekly" ? "weekly" : "xp"}
                 highlight={hydrated && authenticated && p.id === userId}
+                ranks={ranks}
               />
             ))}
           </div>
@@ -180,7 +183,7 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
         <div className="card p-5">
           <div className="mono-label mb-3">階級門檻</div>
           <div className="flex flex-col gap-2.5">
-            {RANKS.map((r) => {
+            {ranks.map((r) => {
               const reached = myXp >= r.minXp;
               return (
                 <div key={r.id} className="flex items-center gap-3">

@@ -9,6 +9,7 @@ import { sha256Hex, normalizeFlag } from "@/lib/hash";
 import { ApiError } from "../auth";
 import * as instancer from "../services/instancer";
 import { notifyDiscord, firstBloodMessage } from "../services/discord";
+import { getSettings } from "./settings";
 import { env } from "../env";
 
 /* ------------------------------ XP ------------------------------ */
@@ -137,6 +138,35 @@ export async function setNote(userId: string, trackSlug: string, lessonSlug: str
 }
 
 /* ------------------------------ arena ------------------------------ */
+/**
+ * settings.xp.hintRefundOnSolve: give back what the hints cost once the
+ * challenge is fully solved. Waits for every flag so a two-flag box cannot
+ * be refunded on the user flag and then keep hinting towards root. The
+ * `#hint-refund` ledger row is the idempotency key.
+ */
+async function refundHints(userId: string, challengeId: string, challengeName: string) {
+  const { xp } = await getSettings();
+  if (!xp.hintRefundOnSolve) return 0;
+
+  const db = await getDb();
+  const refId = challengeId + "#hint-refund";
+  const done = await db.query.xpLedger.findFirst({
+    where: and(eq(schema.xpLedger.userId, userId), eq(schema.xpLedger.refId, refId)),
+  });
+  if (done) return 0;
+
+  const unlocked = await db
+    .select({ cost: schema.challengeHints.cost })
+    .from(schema.hintUnlocks)
+    .innerJoin(schema.challengeHints, eq(schema.challengeHints.id, schema.hintUnlocks.hintId))
+    .where(and(eq(schema.hintUnlocks.userId, userId), eq(schema.challengeHints.challengeId, challengeId)));
+
+  const total = unlocked.reduce((n, h) => n + h.cost, 0);
+  if (total <= 0) return 0;
+  await ledger(userId, total, "hint", refId, "解出後退還提示 XP（" + challengeName + "）");
+  return total;
+}
+
 export async function attemptFlag(userId: string, slug: string, submission: string) {
   const db = await getDb();
   const ch = await db.query.challenges.findFirst({ where: eq(schema.challenges.slug, slug), with: { flags: true } });
@@ -167,7 +197,22 @@ export async function attemptFlag(userId: string, slug: string, submission: stri
     const m = firstBloodMessage({ handle: user?.handle ?? "someone", challenge: ch.name, url: (env().APP_URL ?? "") + "/challenges/" + ch.slug });
     void notifyDiscord(m.content, m.embeds);
   }
-  return { status: "correct" as const, message: hit.flagId === "root" ? "Root 拿下！" : "正確！", flagId: hit.flagId, points: hit.points, firstBlood };
+
+  const mine = await db.query.solves.findMany({
+    where: and(eq(schema.solves.userId, userId), eq(schema.solves.challengeId, ch.id)),
+    columns: { flagId: true },
+  });
+  const complete = ch.flags.every((f) => mine.some((s) => s.flagId === f.flagId));
+  const refunded = complete ? await refundHints(userId, ch.id, ch.name) : 0;
+
+  return {
+    status: "correct" as const,
+    message: hit.flagId === "root" ? "Root 拿下！" : "正確！",
+    flagId: hit.flagId,
+    points: hit.points,
+    firstBlood,
+    refunded,
+  };
 }
 
 export async function unlockHint(userId: string, slug: string, hintId: string) {
@@ -192,6 +237,8 @@ export async function unlockHint(userId: string, slug: string, hintId: string) {
 /* ------------------------------ instances ------------------------------ */
 export async function spawnInstance(userId: string, slug: string) {
   const db = await getDb();
+  const { features } = await getSettings();
+  if (!features.instances) throw new ApiError(403, "目前沒有開放個人靶機");
   const ch = await db.query.challenges.findFirst({ where: eq(schema.challenges.slug, slug) });
   if (!ch) throw new ApiError(404, "challenge not found");
   if (ch.connectionType === "none") throw new ApiError(400, "這題不需要環境");

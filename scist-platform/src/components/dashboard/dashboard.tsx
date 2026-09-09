@@ -28,6 +28,7 @@ import { allLessons, trackLessonCount, type Track } from "@/data/tracks";
 import type { Challenge } from "@/data/challenges";
 import { SCHOOLS, schoolById } from "@/data/schools";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
+import { useRanks } from "@/components/settings-provider";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 
@@ -57,9 +58,10 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
   const [editing, setEditing] = useState(false);
   const [draftHandle, setDraftHandle] = useState("");
 
+  const ranks = useRanks();
   const myXp = hydrated ? xp : 0;
-  const rank = rankFor(myXp);
-  const nxt = nextRank(myXp);
+  const rank = rankFor(myXp, ranks);
+  const nxt = nextRank(myXp, ranks);
 
   const doneLessons = hydrated ? completed.length : 0;
   const totalLessons = Math.max(1, tracks.reduce((n, t) => n + trackLessonCount(t), 0));
@@ -178,7 +180,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
                   <span className="text-fg-3">已達最高階級</span>
                 )}
               </div>
-              <ProgressBar value={rankProgress(myXp)} color={rank.color} />
+              <ProgressBar value={rankProgress(myXp, ranks)} color={rank.color} />
             </div>
           </div>
 

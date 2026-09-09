@@ -51,6 +51,15 @@ export function env(): Env {
   return cached;
 }
 
+/** Absolute origin of this deployment, for metadata, sitemap and robots. */
+export function siteUrl(): string {
+  const configured = env().APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (vercel) return "https://" + vercel;
+  return "https://gate.scist.org";
+}
+
 export const features = {
   discordLogin: () => Boolean(env().DISCORD_CLIENT_ID && env().DISCORD_CLIENT_SECRET),
   stream: () => Boolean(env().CF_ACCOUNT_ID && env().CF_STREAM_API_TOKEN),

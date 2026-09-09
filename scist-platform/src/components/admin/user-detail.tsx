@@ -9,6 +9,7 @@ import { Button, HexAvatar, ProgressBar } from "@/components/ui/primitives";
 import { Drawer, Field, Input, Select, useAsync, useToast } from "@/components/admin/ui";
 import { ROLE_COLOR, ROLE_LABEL } from "@/components/admin/admin-shell";
 import { nextRank, rankFor } from "@/lib/xp";
+import { useRanks } from "@/components/settings-provider";
 import { cn, formatDate, formatNumber, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 
@@ -44,10 +45,11 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"ledger" | "solves" | "lessons">("ledger");
 
+  const ranks = useRanks();
   const d = detail.data;
   const u = d?.user;
-  const rank = u ? rankFor(u.xp) : null;
-  const next = u ? nextRank(u.xp) : null;
+  const rank = u ? rankFor(u.xp, ranks) : null;
+  const next = u ? nextRank(u.xp, ranks) : null;
 
   const refresh = async () => {
     await detail.reload();

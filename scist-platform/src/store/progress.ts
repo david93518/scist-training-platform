@@ -146,6 +146,20 @@ function split(key: LessonKey) {
   return { track: key.slice(0, i), lesson: key.slice(i + 1) };
 }
 
+/**
+ * settings.features.guestProgress. Zustand lives outside React, so the value
+ * is pushed in from <ProgressSync> rather than read from context. When it is
+ * off, nothing a signed-out visitor does is written down.
+ */
+let guestProgress = true;
+export function setGuestProgressEnabled(on: boolean) {
+  guestProgress = on;
+}
+/** true when this change may be recorded locally */
+function mayRecord(authenticated: boolean) {
+  return authenticated || guestProgress;
+}
+
 let lastRefresh = 0;
 
 /** Pulls GET /api/me and hydrates the store. Throttled unless forced. */
@@ -237,6 +251,7 @@ export const useProgress = create<ProgressState>()(
       setProfile: (handle, schoolId, role) => set((s) => ({ handle, schoolId, role: role ?? s.role })),
 
       setWatched: (key, value) => {
+        if (!mayRecord(get().authenticated)) return;
         set((s) => ({ watched: { ...s.watched, [key]: Math.max(s.watched[key] ?? 0, value) } }));
         if (get().authenticated) {
           later("watched:" + key, 1500, () => {
@@ -246,6 +261,7 @@ export const useProgress = create<ProgressState>()(
       },
 
       completeLesson: (key, xp, title) => {
+        if (!mayRecord(get().authenticated)) return;
         if (get().completedLessons.includes(key)) return;
         set((s) => ({
           completedLessons: [...s.completedLessons, key],
@@ -256,6 +272,7 @@ export const useProgress = create<ProgressState>()(
       },
 
       answerCheckpoint: (key, index, xp) => {
+        if (!mayRecord(get().authenticated)) return;
         const done = get().checkpoints[key] ?? [];
         if (done.includes(index)) return;
         set((s) => ({
@@ -267,6 +284,7 @@ export const useProgress = create<ProgressState>()(
       },
 
       setNote: (key, note) => {
+        if (!mayRecord(get().authenticated)) return;
         set((s) => ({ notes: { ...s.notes, [key]: note } }));
         if (get().authenticated) {
           later("note:" + key, 1000, () => {
@@ -278,6 +296,7 @@ export const useProgress = create<ProgressState>()(
       // the API call for flags / hints / instances / events happens in the
       // component (it needs the server's answer); these only update the cache
       solveFlag: (slug, flagId, xp, name) => {
+        if (!mayRecord(get().authenticated)) return;
         const cur = get().solved[slug] ?? [];
         if (cur.includes(flagId)) return;
         set((s) => ({
@@ -288,6 +307,7 @@ export const useProgress = create<ProgressState>()(
       },
 
       revealHint: (slug, hintId, cost) => {
+        if (!mayRecord(get().authenticated)) return;
         const cur = get().revealedHints[slug] ?? [];
         if (cur.includes(hintId)) return;
         set((s) => ({

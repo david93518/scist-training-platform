@@ -28,6 +28,7 @@ import { Button, LinkButton, ProgressBar, DifficultyBadge } from "@/components/u
 import type { Challenge } from "@/data/challenges";
 import { lessonNeighbours, type Lesson, type Track } from "@/data/tracks";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
+import { useCanRecordProgress } from "@/components/settings-provider";
 import { cn, formatMinutes } from "@/lib/utils";
 
 type TabId = "quiz" | "lab" | "notes" | "qa";
@@ -49,6 +50,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
   const answerCheckpoint = useProgress((s) => s.answerCheckpoint);
   const setNote = useProgress((s) => s.setNote);
   const completeLesson = useProgress((s) => s.completeLesson);
+  const canRecord = useCanRecordProgress();
 
   const answeredSet = useMemo(() => new Set(answered ?? []), [answered]);
 
@@ -192,6 +194,18 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
           <DifficultyBadge level={track.difficulty} />
         </div>
       </div>
+
+      {hydrated && !canRecord ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
+          <Lock size={15} className="shrink-0 text-amber" />
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-fg-2">
+            目前沒有開放未登入者累積進度。你還是可以把這一課看完，但觀看位置、檢查站與筆記都不會留下來。
+          </p>
+          <LinkButton href="?login" variant="outline" size="sm">
+            登入才能記錄
+          </LinkButton>
+        </div>
+      ) : null}
 
       {/* stage + panel */}
       <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
@@ -389,11 +403,12 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                   <div className="flex items-center justify-between">
                     <span className="mono-label">我的筆記</span>
                     <span className="font-mono text-[10.5px] text-fg-3">
-                      {authenticated ? "自動儲存到你的帳號" : "自動儲存在這台裝置"}
+                      {!canRecord ? "登入才能保存" : authenticated ? "自動儲存到你的帳號" : "自動儲存在這台裝置"}
                     </span>
                   </div>
                   <textarea
                     value={hydrated ? note : ""}
+                    readOnly={!canRecord}
                     onChange={(e) => setNote(key, e.target.value)}
                     placeholder={
                       "在這裡記下你的理解、卡住的地方、想之後再查的東西。\n\n例如：\n- 為什麼兩個減號能註解掉後面？\n- 參數化查詢要在哪一層做？"
@@ -431,11 +446,16 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
               ) : (
                 <Button
                   className="w-full"
-                  variant={canComplete ? "primary" : "outline"}
-                  disabled={!canComplete}
+                  variant={canComplete && canRecord ? "primary" : "outline"}
+                  disabled={!canComplete || !canRecord}
                   onClick={onComplete}
                 >
-                  {canComplete ? (
+                  {!canRecord ? (
+                    <>
+                      <Lock size={14} />
+                      登入才能記錄完成
+                    </>
+                  ) : canComplete ? (
                     <>
                       <Check size={15} />
                       標記完成 +{lesson.xp} XP

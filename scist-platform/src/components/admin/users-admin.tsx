@@ -10,6 +10,7 @@ import { PageTitle, Table, Td, Th, Tr, ToastHost, useAsync, useToast } from "@/c
 import { ROLE_COLOR, ROLE_LABEL } from "@/components/admin/admin-shell";
 import { UserDetailDrawer } from "@/components/admin/user-detail";
 import { rankFor } from "@/lib/xp";
+import { useRanks } from "@/components/settings-provider";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 
@@ -20,6 +21,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
   const toast = useToast((s) => s.push);
   const users = useAsync(() => api.users.list());
   const now = useNow(60_000);
+  const ranks = useRanks();
   const [q, setQ] = useState("");
   const [role, setRole] = useState<Role | "all">("all");
   const [selected, setSelected] = useState<string | null>(initialUserId ?? null);
@@ -77,7 +79,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
         </thead>
         <tbody>
           {visible.map((u) => {
-            const rank = rankFor(u.xp);
+            const rank = rankFor(u.xp, ranks);
             return (
               <Tr key={u.id} className={u.bannedAt ? "opacity-50" : ""}>
                 <Td>

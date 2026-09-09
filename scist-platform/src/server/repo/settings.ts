@@ -4,16 +4,10 @@
 import { desc, eq, gte, sql } from "drizzle-orm";
 import { getDb, schema, dbKind } from "../db";
 import { features } from "../env";
-import { RANKS } from "@/lib/xp";
+import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import type { AdminSettings, AdminStats, IntegrationStatus } from "@/admin/types";
 
-export const DEFAULT_SETTINGS: AdminSettings = {
-  site: { name: "SCIST Gate", tagline: "資安的第一道門", discordInvite: "https://discord.gg/scist", launch: "2026-10" },
-  ranks: RANKS.map((r) => ({ id: r.id, name: r.name, en: r.en, minXp: r.minXp, color: r.color, blurb: r.blurb })),
-  xp: { checkpointDefault: 25, lessonDefault: 80, hintRefundOnSolve: false },
-  leaderboard: { weekStartsOn: 0 },
-  features: { guestProgress: true, instances: true, questions: true },
-};
+export { DEFAULT_SETTINGS };
 
 export async function getSettings(): Promise<AdminSettings> {
   const db = await getDb();
@@ -26,6 +20,19 @@ export async function getSettings(): Promise<AdminSettings> {
     leaderboard: { ...DEFAULT_SETTINGS.leaderboard, ...(map.leaderboard as object) },
     features: { ...DEFAULT_SETTINGS.features, ...(map.features as object) },
   };
+}
+
+/**
+ * For the root layout and other always-rendered chrome: a database that is
+ * down (or absent during `next build`) must not take the whole page with it.
+ */
+export async function getSettingsSafe(): Promise<AdminSettings> {
+  try {
+    return await getSettings();
+  } catch (err) {
+    console.error("[settings] falling back to defaults:", err);
+    return DEFAULT_SETTINGS;
+  }
 }
 
 export async function saveSettings(input: AdminSettings, actorId?: string): Promise<AdminSettings> {

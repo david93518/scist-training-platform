@@ -7,5 +7,5 @@ export const POST = route(async (req: Request, ctx: RouteContext<"/api/admin/que
   const user = await requireRole("ta");
   const { id } = await ctx.params;
   const { body } = await readJson(req, answerCreateSchema);
-  return json(await createAnswer({ id: user.id, handle: user.handle, role: user.role }, id, body), { status: 201 });
+  return json(await createAnswer({ id: user.id, handle: user.handle, role: user.role }, id, body, { fromAdmin: true }), { status: 201 });
 });

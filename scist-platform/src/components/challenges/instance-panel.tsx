@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import type { Challenge } from "@/data/challenges";
 import { useProgress, useHydrated } from "@/store/progress";
+import { useFeatures } from "@/components/settings-provider";
 import { useNow } from "@/lib/use-now";
 import { formatDuration } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
   const kill = useProgress((s) => s.killInstance);
   const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
+  const instancesOn = useFeatures().instances;
 
   const [booting, setBooting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -41,10 +43,10 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
 
   if (!challenge.connection && !challenge.files?.length) return null;
 
-  const running = hydrated && Boolean(info);
+  const running = hydrated && instancesOn && Boolean(info);
   // the server hands out the real address once an instance exists; the
   // challenge's fixed connection string is the shared / guest fallback
-  const address = info?.host ? info.host + (info.port ? ":" + info.port : "") : (challenge.connection?.value ?? "");
+  const address = running && info?.host ? info.host + (info.port ? ":" + info.port : "") : (challenge.connection?.value ?? "");
 
   const start = async () => {
     setError(null);
@@ -148,7 +150,7 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
                 : "未登入時只是模擬。登入後會啟動你專屬的 Docker 實例，兩小時後自動回收。"}
             </p>
           </div>
-        ) : (
+        ) : instancesOn ? (
           <div className="mt-3.5">
             <p className="text-[12.5px] leading-relaxed text-fg-2">
               每位學員拿到自己的獨立環境，想怎麼打就怎麼打，壞了重開就好。
@@ -166,6 +168,22 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
                 </>
               )}
             </Button>
+          </div>
+        ) : (
+          /* settings.features.instances off: hand out the shared address only */
+          <div className="mt-3.5">
+            <div className="mono-label mb-1.5">{CONNECTION_LABEL[challenge.connection.type]}</div>
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-bg-0 px-3 py-2.5">
+              <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-accent">
+                {challenge.connection.value}
+              </code>
+              <button onClick={copy} className="shrink-0 text-fg-3 transition-colors hover:text-fg" aria-label="複製連線資訊">
+                {copied ? <Check size={14} className="text-accent" /> : <Copy size={14} />}
+              </button>
+            </div>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-fg-3">
+              目前沒有開放個人靶機，大家共用上面這個環境。請不要破壞它，其他人也在用。
+            </p>
           </div>
         )
       ) : null}

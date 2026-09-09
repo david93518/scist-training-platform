@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Flag, Droplet, Zap, ListChecks, Play, Users, Radio } from "lucide-react";
 import { LinkButton } from "@/components/ui/primitives";
 import { HexField } from "@/components/ui/hex-field";
+import { useSettings } from "@/components/settings-provider";
 import { formatNumber } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -225,6 +226,7 @@ function Terminal() {
 }
 
 export function Hero({ stats }: { stats: { challenges: number; lessons: number; users: number } }) {
+  const launch = useSettings().site.launch.replaceAll("-", ".");
   const HERO_STATS = [
     { icon: Flag, value: stats.challenges + " 題", label: "可實戰題目" },
     { icon: Play, value: stats.lessons + " 課", label: "影音單元" },
@@ -252,7 +254,7 @@ export function Hero({ stats }: { stats: { challenges: number; lessons: number; 
                 <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-bg-0" />
               </span>
               <span className="font-mono text-[11.5px] tracking-[0.16em] text-accent-2">
-                SCIST 數位轉型 · 2026.10 正式開放
+                SCIST 數位轉型{launch ? " · " + launch + " 正式開放" : ""}
               </span>
             </div>
 

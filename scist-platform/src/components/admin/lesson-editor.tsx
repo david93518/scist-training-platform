@@ -29,6 +29,7 @@ import {
   useToast,
   useUnsavedGuard,
 } from "@/components/admin/ui";
+import { useSettings } from "@/components/settings-provider";
 import { cn } from "@/lib/utils";
 
 const BLOCK_TYPES: { id: ContentBlock["type"]; label: string }[] = [
@@ -54,7 +55,7 @@ function makeBlock(type: ContentBlock["type"]): ContentBlock {
   }
 }
 
-function blankLesson(track: AdminTrack | undefined, sortOrder: number): AdminLesson {
+function blankLesson(track: AdminTrack | undefined, sortOrder: number, xp: number): AdminLesson {
   return {
     id: nanoid(12),
     trackId: track?.id ?? "",
@@ -63,7 +64,7 @@ function blankLesson(track: AdminTrack | undefined, sortOrder: number): AdminLes
     title: "",
     summary: "",
     durationSec: 900,
-    xp: 80,
+    xp,
     videoProvider: "none",
     videoId: null,
     videoStatus: "none",
@@ -90,6 +91,10 @@ export function LessonEditor({ id }: { id?: string }) {
   const [preview, setPreview] = useState(true);
   const [baseline, setBaseline] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  // 後台「XP 規則」的預設值，只影響新建的課程與檢查站
+  const xpDefaults = useSettings().xp;
+  const xpDefaultsRef = useRef(xpDefaults);
+  xpDefaultsRef.current = xpDefaults;
 
   useEffect(() => {
     Promise.all([api.tracks.list(), api.lessons.list(), api.challenges.list()]).then(([t, l, c]) => {
@@ -104,7 +109,7 @@ export function LessonEditor({ id }: { id?: string }) {
         } else setMissing(true);
       } else {
         const first = t[0];
-        const fresh = blankLesson(first, l.filter((x) => x.moduleId === first?.modules[0]?.id).length);
+        const fresh = blankLesson(first, l.filter((x) => x.moduleId === first?.modules[0]?.id).length, xpDefaultsRef.current.lessonDefault);
         setDraft(fresh);
         setBaseline(JSON.stringify(fresh));
       }
@@ -317,7 +322,7 @@ export function LessonEditor({ id }: { id?: string }) {
             <Repeater
               items={draft.checkpoints}
               onChange={(checkpoints) => patch({ checkpoints })}
-              make={(): Checkpoint => ({ at: Math.min(0.9, 0.3 * (draft.checkpoints.length + 1)), question: "", options: ["", "", "", ""], answer: 0, explain: "", xp: 25 })}
+              make={(): Checkpoint => ({ at: Math.min(0.9, 0.3 * (draft.checkpoints.length + 1)), question: "", options: ["", "", "", ""], answer: 0, explain: "", xp: xpDefaults.checkpointDefault })}
               addLabel="新增檢查站"
               empty="還沒有檢查站。沒有檢查站的課看完就能完成。"
               render={(c, update) => (

@@ -2,7 +2,7 @@ import { Flame, ShieldCheck } from "lucide-react";
 import { HexAvatar } from "@/components/ui/primitives";
 import { schoolById } from "@/data/schools";
 import type { Player } from "@/data/players";
-import { rankFor } from "@/lib/xp";
+import { rankFor, type Rank } from "@/lib/xp";
 import { cn, formatNumber } from "@/lib/utils";
 
 const PODIUM = ["#ffd75e", "#cfd8e3", "#d98a4f"];
@@ -27,14 +27,17 @@ export function PlayerRow({
   place,
   metric = "xp",
   highlight,
+  ranks,
 }: {
   player: Player;
   place: number;
   metric?: "xp" | "weekly";
   highlight?: boolean;
+  /** the admin-configured ladder; omit to use the shipped default */
+  ranks?: Rank[];
 }) {
   const school = schoolById(player.schoolId);
-  const rank = rankFor(player.xp);
+  const rank = rankFor(player.xp, ranks);
   const value = metric === "xp" ? player.xp : player.weeklyXp;
 
   return (

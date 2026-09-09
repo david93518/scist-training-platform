@@ -8,6 +8,7 @@ import { SCHOOLS } from "@/data/schools";
 import { useProgress, useHydrated, refreshProfile, type Role } from "@/store/progress";
 import { api } from "@/lib/api";
 import { rankFor } from "@/lib/xp";
+import { useRanks, useSettings } from "@/components/settings-provider";
 import { cn, formatNumber } from "@/lib/utils";
 
 const DEV = process.env.NODE_ENV !== "production";
@@ -39,6 +40,7 @@ export function LoginDialog({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 function LoginDialogBody({ onClose }: { onClose: () => void }) {
+  const siteName = useSettings().site.name;
   const handle = useProgress((s) => s.handle);
   const schoolId = useProgress((s) => s.schoolId);
   const role = useProgress((s) => s.role);
@@ -76,7 +78,7 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[100] grid place-items-center bg-bg-0/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="card w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
-          <div className="text-[16px] font-extrabold">登入 SCIST Gate</div>
+          <div className="text-[16px] font-extrabold">登入 {siteName}</div>
           <button onClick={onClose} className="text-fg-3 hover:text-fg" aria-label="關閉">
             <X size={18} />
           </button>
@@ -212,7 +214,8 @@ export function LoginMenu() {
   // ?login=… (the admin gate sends people here) opens the dialog on arrival
   const [open, setOpen] = useState(initialOpen);
   const [menu, setMenu] = useState(false);
-  const rank = rankFor(xp);
+  const ranks = useRanks();
+  const rank = rankFor(xp, ranks);
   const canAdmin = role === "instructor" || role === "admin";
 
   if (!hydrated) return <span className="h-10 w-24" />;

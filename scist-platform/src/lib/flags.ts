@@ -13,6 +13,8 @@ export interface AttemptResult {
   flagId?: string;
   points?: number;
   firstBlood?: boolean;
+  /** hint XP handed back once the challenge is fully solved */
+  refunded?: number;
 }
 
 export async function checkFlagLocally(challenge: Challenge, submission: string): Promise<AttemptResult> {

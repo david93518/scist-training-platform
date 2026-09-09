@@ -33,7 +33,7 @@ export default async function HomePage() {
       <TracksGrid tracks={tracks} />
       <LoopSection />
       <ChallengePreview challenges={challenges} totalPoints={stats.totalPoints} boxes={stats.boxes} />
-      <LeaderboardPreview players={players} />
+      <LeaderboardPreview players={players} ranks={settings.ranks} />
       <WhySection />
       <InstructorsSection instructors={instructors} />
       <CommunitySection events={events} />
