@@ -312,6 +312,39 @@ export const answers = pgTable(
   (t) => [index("answers_question_idx").on(t.questionId)],
 );
 
+/**
+ * One row per person per target. The denormalised `votes` column above stays
+ * the number on screen (it also carries the seeded counts); these tables only
+ * exist so the same person cannot vote twice.
+ */
+export const questionVotes = pgTable(
+  "question_votes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    questionId: text("question_id")
+      .notNull()
+      .references(() => questions.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.questionId] })],
+);
+
+export const answerVotes = pgTable(
+  "answer_votes",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    answerId: text("answer_id")
+      .notNull()
+      .references(() => answers.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.answerId] })],
+);
+
 /* ------------------------------ learner state ------------------------------ */
 export const lessonProgress = pgTable(
   "lesson_progress",

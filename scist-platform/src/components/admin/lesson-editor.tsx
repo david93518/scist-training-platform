@@ -93,8 +93,6 @@ export function LessonEditor({ id }: { id?: string }) {
   const formRef = useRef<HTMLFormElement>(null);
   // 後台「XP 規則」的預設值，只影響新建的課程與檢查站
   const xpDefaults = useSettings().xp;
-  const xpDefaultsRef = useRef(xpDefaults);
-  xpDefaultsRef.current = xpDefaults;
 
   useEffect(() => {
     Promise.all([api.tracks.list(), api.lessons.list(), api.challenges.list()]).then(([t, l, c]) => {
@@ -109,7 +107,7 @@ export function LessonEditor({ id }: { id?: string }) {
         } else setMissing(true);
       } else {
         const first = t[0];
-        const fresh = blankLesson(first, l.filter((x) => x.moduleId === first?.modules[0]?.id).length, xpDefaultsRef.current.lessonDefault);
+        const fresh = blankLesson(first, l.filter((x) => x.moduleId === first?.modules[0]?.id).length, xpDefaults.lessonDefault);
         setDraft(fresh);
         setBaseline(JSON.stringify(fresh));
       }

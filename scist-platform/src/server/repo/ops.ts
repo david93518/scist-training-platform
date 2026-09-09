@@ -2,7 +2,7 @@
  * Operations: audit log, running instances, analytics.
  * Everything here is read by the admin console only.
  */
-import { asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { ApiError } from "../auth";
 import * as instancer from "../services/instancer";
@@ -46,8 +46,22 @@ export async function listAudit(limit = 200): Promise<AuditEntry[]> {
 /* ------------------------------ instances ------------------------------ */
 const LIVE: ("starting" | "running")[] = ["starting", "running"];
 
+/**
+ * The instancer reclaims containers on its own schedule and never tells us,
+ * so rows sit at "running" long after the container is gone. Anything past
+ * its TTL is marked stopped before we read the list.
+ */
+export async function expireInstances() {
+  const db = await getDb();
+  await db
+    .update(schema.instances)
+    .set({ status: "stopped" })
+    .where(and(inArray(schema.instances.status, LIVE), lt(schema.instances.expiresAt, new Date())));
+}
+
 export async function listInstancesAdmin(): Promise<AdminInstance[]> {
   const db = await getDb();
+  await expireInstances();
   const rows = await db
     .select({
       id: schema.instances.id,

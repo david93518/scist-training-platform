@@ -26,7 +26,14 @@ async function assertQuestionsOpen() {
 
 type Row = typeof schema.questions.$inferSelect & { answers: (typeof schema.answers.$inferSelect)[] };
 
-function toPublic(q: Row): PublicQuestion {
+/** what the reader already voted up, so the buttons render in the right state */
+interface Viewer {
+  id: string;
+  questionVotes: Set<string>;
+  answerVotes: Set<string>;
+}
+
+function toPublic(q: Row, viewer?: Viewer): PublicQuestion {
   return {
     id: q.id,
     scope: q.scope,
@@ -36,6 +43,8 @@ function toPublic(q: Row): PublicQuestion {
     author: q.authorHandle,
     createdAt: q.createdAt.toISOString(),
     votes: q.votes,
+    voted: viewer?.questionVotes.has(q.id) || undefined,
+    mine: (viewer && q.authorId === viewer.id) || undefined,
     answers: [...q.answers]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((a) => ({
@@ -46,6 +55,7 @@ function toPublic(q: Row): PublicQuestion {
         createdAt: a.createdAt.toISOString(),
         votes: a.votes,
         accepted: q.acceptedAnswerId === a.id || undefined,
+        voted: viewer?.answerVotes.has(a.id) || undefined,
       })),
   };
 }
@@ -67,14 +77,24 @@ function toAdmin(q: Row): AdminQuestion {
   };
 }
 
-export async function listQuestionsPublic(scope: "lesson" | "challenge", refId: string) {
+export async function listQuestionsPublic(scope: "lesson" | "challenge", refId: string, viewerId?: string) {
   const db = await getDb();
   const rows = await db.query.questions.findMany({
     where: and(eq(schema.questions.scope, scope), eq(schema.questions.refId, refId)),
     with: { answers: true },
     orderBy: desc(schema.questions.createdAt),
   });
-  return rows.map(toPublic);
+  const viewer = viewerId ? await loadViewer(viewerId) : undefined;
+  return rows.map((r) => toPublic(r, viewer));
+}
+
+async function loadViewer(userId: string): Promise<Viewer> {
+  const db = await getDb();
+  const [qv, av] = await Promise.all([
+    db.select({ id: schema.questionVotes.questionId }).from(schema.questionVotes).where(eq(schema.questionVotes.userId, userId)),
+    db.select({ id: schema.answerVotes.answerId }).from(schema.answerVotes).where(eq(schema.answerVotes.userId, userId)),
+  ]);
+  return { id: userId, questionVotes: new Set(qv.map((r) => r.id)), answerVotes: new Set(av.map((r) => r.id)) };
 }
 
 export async function listQuestionsAdmin() {
@@ -148,6 +168,47 @@ export async function acceptAnswer(questionId: string, answerId: string, actor?:
   });
   if (!answer) throw new ApiError(404, "answer not found");
   await db.update(schema.questions).set({ acceptedAnswerId: answerId }).where(eq(schema.questions.id, questionId));
+}
+
+/* ------------------------------ votes ------------------------------ */
+/**
+ * Toggling a vote moves the counter and the dedup row together. The counter
+ * carries the seeded numbers, so it is adjusted rather than recomputed.
+ */
+export async function voteQuestion(userId: string, questionId: string, on: boolean) {
+  const db = await getDb();
+  const q = await db.query.questions.findFirst({ where: eq(schema.questions.id, questionId), columns: { id: true, votes: true } });
+  if (!q) throw new ApiError(404, "question not found");
+
+  const existing = await db.query.questionVotes.findFirst({
+    where: and(eq(schema.questionVotes.userId, userId), eq(schema.questionVotes.questionId, questionId)),
+  });
+  if (on === Boolean(existing)) return { votes: q.votes, voted: on };
+
+  if (on) await db.insert(schema.questionVotes).values({ userId, questionId }).onConflictDoNothing();
+  else await db.delete(schema.questionVotes).where(and(eq(schema.questionVotes.userId, userId), eq(schema.questionVotes.questionId, questionId)));
+
+  const votes = Math.max(0, q.votes + (on ? 1 : -1));
+  await db.update(schema.questions).set({ votes }).where(eq(schema.questions.id, questionId));
+  return { votes, voted: on };
+}
+
+export async function voteAnswer(userId: string, answerId: string, on: boolean) {
+  const db = await getDb();
+  const a = await db.query.answers.findFirst({ where: eq(schema.answers.id, answerId), columns: { id: true, votes: true } });
+  if (!a) throw new ApiError(404, "answer not found");
+
+  const existing = await db.query.answerVotes.findFirst({
+    where: and(eq(schema.answerVotes.userId, userId), eq(schema.answerVotes.answerId, answerId)),
+  });
+  if (on === Boolean(existing)) return { votes: a.votes, voted: on };
+
+  if (on) await db.insert(schema.answerVotes).values({ userId, answerId }).onConflictDoNothing();
+  else await db.delete(schema.answerVotes).where(and(eq(schema.answerVotes.userId, userId), eq(schema.answerVotes.answerId, answerId)));
+
+  const votes = Math.max(0, a.votes + (on ? 1 : -1));
+  await db.update(schema.answers).set({ votes }).where(eq(schema.answers.id, answerId));
+  return { votes, voted: on };
 }
 
 export async function deleteQuestion(questionId: string) {

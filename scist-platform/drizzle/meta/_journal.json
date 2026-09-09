@@ -8,6 +8,13 @@
       "when": 1788885887508,
       "tag": "0000_ancient_violations",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788924131954,
+      "tag": "0001_lying_zaladane",
+      "breakpoints": true
     }
   ]
 }

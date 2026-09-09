@@ -3,13 +3,14 @@
  * checkpoint answers, solves, hints, XP ledger, event registrations,
  * challenge instances. The leaderboard is computed from the ledger.
  */
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { sha256Hex, normalizeFlag } from "@/lib/hash";
 import { ApiError } from "../auth";
 import * as instancer from "../services/instancer";
 import { notifyDiscord, firstBloodMessage } from "../services/discord";
 import { getSettings } from "./settings";
+import { expireInstances } from "./ops";
 import { env } from "../env";
 
 /* ------------------------------ XP ------------------------------ */
@@ -28,6 +29,7 @@ async function ledger(userId: string, delta: number, reason: typeof schema.xpRea
 /** Mirrors the shape of the client progress store so it can be hydrated directly. */
 export async function getProfile(userId: string) {
   const db = await getDb();
+  await expireInstances();
   const user = await db.query.users.findFirst({ where: eq(schema.users.id, userId), with: { school: true } });
   if (!user) throw new ApiError(404, "user not found");
 
@@ -53,7 +55,9 @@ export async function getProfile(userId: string) {
 
   const regs = await db.select({ eventId: schema.eventRegistrations.eventId }).from(schema.eventRegistrations).where(eq(schema.eventRegistrations.userId, userId));
   const log = await db.select().from(schema.xpLedger).where(eq(schema.xpLedger.userId, userId)).orderBy(desc(schema.xpLedger.createdAt)).limit(60);
-  const instances = await db.query.instances.findMany({ where: and(eq(schema.instances.userId, userId), eq(schema.instances.status, "running")) });
+  const instances = await db.query.instances.findMany({
+    where: and(eq(schema.instances.userId, userId), eq(schema.instances.status, "running"), gt(schema.instances.expiresAt, new Date())),
+  });
 
   const solved: Record<string, string[]> = {};
   for (const s of solves) (solved[slugOf(s.challengeId)] ??= []).push(s.flagId);

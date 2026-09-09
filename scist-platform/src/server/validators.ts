@@ -158,6 +158,7 @@ export const registerSchema = z.object({ on: z.boolean() });
 export const devLoginSchema = z.object({ handle: z.string().min(1).max(20), schoolId: z.string().optional(), role: roleSchema });
 export const userPatchSchema = z.object({ role: roleSchema.optional(), banned: z.boolean().optional() });
 export const questionPatchSchema = z.object({ acceptedAnswerId: z.string() });
+export const voteSchema = z.object({ on: z.boolean(), answerId: z.string().min(1).max(64).optional() });
 export const reorderSchema = z.object({ moduleId: id, ids: z.array(id).max(200) });
 export const uploadVideoSchema = z.object({ lessonId: id, name: z.string().max(200), size: z.number().int().min(0), type: z.string().max(100) });
 export const uploadFileSchema = z.object({ challengeId: id, name: z.string().min(1).max(200), size: z.number().int().min(0), type: z.string().max(100) });

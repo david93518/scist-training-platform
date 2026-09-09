@@ -10,6 +10,8 @@ export interface Answer {
   createdAt: string;
   votes: number;
   accepted?: boolean;
+  /** the reader already voted this up */
+  voted?: boolean;
 }
 
 export interface Question {
@@ -22,6 +24,9 @@ export interface Question {
   createdAt: string;
   votes: number;
   answers: Answer[];
+  voted?: boolean;
+  /** the reader asked this, so they may accept an answer */
+  mine?: boolean;
 }
 
 export const QUESTIONS: Question[] = [

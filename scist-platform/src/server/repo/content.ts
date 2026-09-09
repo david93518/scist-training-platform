@@ -11,7 +11,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { sha256Hex } from "@/lib/hash";
-import { publicUrl } from "../services/r2";
+import { deleteObject, publicUrl } from "../services/r2";
 import type { AdminChallenge, AdminEvent, AdminLesson, AdminTrack } from "@/admin/types";
 import type { Track as PublicTrack, Lesson as PublicLesson } from "@/data/tracks";
 import type { Challenge as PublicChallenge } from "@/data/challenges";
@@ -198,6 +198,19 @@ export async function listChallengesAdmin(): Promise<AdminChallenge[]> {
   return rows.map(toAdminChallenge);
 }
 
+/**
+ * R2 keeps charging for objects nobody links to, so removing an attachment in
+ * the editor has to remove the object too. A key still referenced by another
+ * row is left alone; a failed delete only logs, since the row is already gone.
+ */
+async function dropOrphanedObjects(before: { objectKey: string | null }[], after: { objectKey: string | null }[]) {
+  const kept = new Set(after.map((f) => f.objectKey).filter((k): k is string => Boolean(k)));
+  const gone = [...new Set(before.map((f) => f.objectKey).filter((k): k is string => Boolean(k)))].filter((k) => !kept.has(k));
+  for (const key of gone) {
+    await deleteObject(key).catch((err) => console.error("[r2] could not delete " + key, err));
+  }
+}
+
 export async function saveChallenge(input: AdminChallenge, actorId?: string): Promise<AdminChallenge> {
   const db = await getDb();
   const prev = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, input.id) });
@@ -246,6 +259,7 @@ export async function saveChallenge(input: AdminChallenge, actorId?: string): Pr
   }
   await db.delete(schema.challengeHints).where(and(eq(schema.challengeHints.challengeId, input.id), hintIds.length ? sql`${schema.challengeHints.id} not in ${hintIds}` : sql`true`));
 
+  const before = await db.query.challengeFiles.findMany({ where: eq(schema.challengeFiles.challengeId, input.id) });
   const fileIds: string[] = [];
   for (const f of input.files) {
     const frow = { id: f.id, challengeId: input.id, name: f.name, objectKey: f.objectKey, size: f.size, contentType: null as string | null };
@@ -253,6 +267,7 @@ export async function saveChallenge(input: AdminChallenge, actorId?: string): Pr
     fileIds.push(f.id);
   }
   await db.delete(schema.challengeFiles).where(and(eq(schema.challengeFiles.challengeId, input.id), fileIds.length ? sql`${schema.challengeFiles.id} not in ${fileIds}` : sql`true`));
+  await dropOrphanedObjects(before, input.files);
 
   const saved = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, input.id), with: { flags: true, hints: true, files: true } });
   return toAdminChallenge(saved!);
@@ -260,7 +275,9 @@ export async function saveChallenge(input: AdminChallenge, actorId?: string): Pr
 
 export async function deleteChallenge(id: string) {
   const db = await getDb();
+  const files = await db.query.challengeFiles.findMany({ where: eq(schema.challengeFiles.challengeId, id) });
   await db.delete(schema.challenges).where(eq(schema.challenges.id, id));
+  await dropOrphanedObjects(files, []);
 }
 
 /* ================================ events ================================ */
