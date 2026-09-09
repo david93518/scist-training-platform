@@ -1,0 +1,27 @@
+name: 每週挑戰結算
+
+# 發本週挑戰前三名的加分，並把戰報貼到 Discord。
+# 後台「設定與整合 → 本週挑戰」也有同一個按鈕，這裡只是省得有人忘記按。
+# 重複觸發不會重複發分，所以手動重跑是安全的。
+on:
+  schedule:
+    - cron: "0 14 * * 0" # 每週日 22:00 台北時間
+  workflow_dispatch:
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 結算並公告
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          if [ -z "$BACKUP_TOKEN" ]; then
+            echo "BACKUP_TOKEN 未設定，見 docs/INTEGRATIONS.md" >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "authorization: Bearer $BACKUP_TOKEN" \
+            "${APP_URL:-https://gate.scist.org}/api/admin/weekly/settle"

@@ -35,6 +35,16 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
 
   const counts = ROLES.map((r) => ({ r, n: (users.data ?? []).filter((u) => u.role === r).length }));
 
+  // 助教以上、而且真的回答過問題的人
+  const helpers = useMemo(
+    () =>
+      (users.data ?? [])
+        .filter((u) => u.role !== "student" && u.answers > 0)
+        .sort((a, b) => b.accepted - a.accepted || b.answers - a.answers)
+        .slice(0, 9),
+    [users.data],
+  );
+
   return (
     <div>
       <PageTitle
@@ -59,6 +69,38 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
         ))}
       </div>
 
+      {helpers.length ? (
+        <div className="card mb-5 p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <ShieldCheck size={15} className="text-blue" />
+            <span className="text-[14px] font-bold">助教貢獻</span>
+          </div>
+          <p className="mb-4 text-[12px] leading-relaxed text-fg-3">
+            回答數與被發問者採納的數量，是「累積助教時數可兌換優先報名資深課程」的計算依據。依採納數排序。
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {helpers.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setSelected(u.id)}
+                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition-colors hover:border-white/20"
+              >
+                <HexAvatar seed={u.handle} size={30} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-mono text-[13px] font-bold">{u.handle}</div>
+                  <div className="text-[11px] text-fg-3">{ROLE_LABEL[u.role]}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-[15px] font-bold tabular-nums text-accent">{u.accepted}</div>
+                  <div className="font-mono text-[10.5px] text-fg-3">{u.answers} 答中採納</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-4 flex h-10 items-center gap-2 rounded-lg border border-white/[0.08] bg-bg-0 px-3">
         <Search size={14} className="text-fg-3" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜尋帳號或學校" className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-fg-3" />
@@ -72,6 +114,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
             <Th>階級</Th>
             <Th>XP</Th>
             <Th>解題</Th>
+            <Th>助教貢獻</Th>
             <Th>最後上線</Th>
             <Th>角色</Th>
             <Th className="text-right">操作</Th>
@@ -102,6 +145,16 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
                 </Td>
                 <Td className="font-mono text-[13px] tabular-nums text-accent">{formatNumber(u.xp)}</Td>
                 <Td className="font-mono text-[12.5px]">{u.solves}</Td>
+                <Td className="font-mono text-[12.5px] tabular-nums">
+                  {u.answers ? (
+                    <span title="回答數 · 被採納數">
+                      {u.answers} 答
+                      {u.accepted ? <span className="text-accent"> · {u.accepted} 採納</span> : null}
+                    </span>
+                  ) : (
+                    <span className="text-fg-3">—</span>
+                  )}
+                </Td>
                 <Td className="font-mono text-[11.5px] text-fg-3">{u.lastSeenAt ? relativeTime(u.lastSeenAt, now) : "—"}</Td>
                 <Td>
                   <select

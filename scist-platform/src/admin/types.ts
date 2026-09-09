@@ -5,6 +5,7 @@
  */
 import type { ContentBlock, Checkpoint } from "@/data/tracks";
 import type { Difficulty } from "@/lib/xp";
+import type { CertRule } from "@/lib/certifications";
 import type { Category } from "@/data/challenges";
 import type { EventType } from "@/data/events";
 
@@ -134,6 +135,9 @@ export interface AdminUser {
   role: Role;
   xp: number;
   solves: number;
+  /** 助教貢獻：回答數與被採納數 */
+  answers: number;
+  accepted: number;
   lastSeenAt: string | null;
   bannedAt: string | null;
 }
@@ -172,8 +176,12 @@ export interface RankRule {
 export interface AdminSettings {
   site: { name: string; tagline: string; discordInvite: string; launch: string };
   ranks: RankRule[];
+  /** 企劃書的三級認證，條件是完課與解題，跟 ranks 的 XP 門檻無關 */
+  certifications: CertRule[];
   xp: { checkpointDefault: number; lessonDefault: number; hintRefundOnSolve: boolean };
   leaderboard: { weekStartsOn: number };
+  /** 本週指定挑戰；slug 留空就整個功能不出現 */
+  weekly: { slug: string; note: string; bonusXp: number };
   features: { guestProgress: boolean; instances: boolean; questions: boolean };
 }
 

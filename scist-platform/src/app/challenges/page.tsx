@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { PageHero } from "@/components/ui/page-hero";
 import { Arena } from "@/components/challenges/arena";
+import { WeeklyChallengeBanner } from "@/components/challenges/weekly-challenge";
 import { getChallengesPublic } from "@/server/repo/content";
+import { getWeeklyChallenge } from "@/server/repo/site";
+import { getSettingsSafe } from "@/server/repo/settings";
 import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +16,11 @@ export const metadata: Metadata = {
 };
 
 export default async function ChallengesPage() {
-  const challenges = await getChallengesPublic();
+  const settings = await getSettingsSafe();
+  const [challenges, weekly] = await Promise.all([
+    getChallengesPublic(),
+    getWeeklyChallenge(settings.weekly, settings.leaderboard.weekStartsOn),
+  ]);
   const categories = new Set(challenges.map((c) => c.category)).size;
   return (
     <main>
@@ -29,7 +36,8 @@ export default async function ChallengesPage() {
           { value: formatNumber(challenges.reduce((n, c) => n + c.points, 0)), label: "總分" },
         ]}
       />
-      <div className="mx-auto max-w-7xl px-5 py-12">
+      <div className="mx-auto flex max-w-7xl flex-col gap-10 px-5 py-12">
+        {weekly ? <WeeklyChallengeBanner weekly={weekly} /> : null}
         <Arena challenges={challenges} />
       </div>
     </main>

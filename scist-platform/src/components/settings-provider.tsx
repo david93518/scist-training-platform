@@ -11,6 +11,7 @@ import { createContext, useContext, useMemo } from "react";
 import type { AdminSettings } from "@/admin/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import { ladder, type Rank } from "@/lib/xp";
+import { certLadder, type CertRule } from "@/lib/certifications";
 import { useProgress } from "@/store/progress";
 
 const SettingsContext = createContext<AdminSettings>(DEFAULT_SETTINGS);
@@ -27,6 +28,12 @@ export function useSettings(): AdminSettings {
 export function useRanks(): Rank[] {
   const ranks = useSettings().ranks;
   return useMemo(() => ladder(ranks), [ranks]);
+}
+
+/** The configured three-tier certifications, falling back to the built-in set. */
+export function useCertifications(): CertRule[] {
+  const certifications = useSettings().certifications;
+  return useMemo(() => certLadder(certifications), [certifications]);
 }
 
 export function useFeatures() {

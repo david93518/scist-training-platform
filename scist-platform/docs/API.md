@@ -125,17 +125,18 @@ DELETE ← { "stopped": 1 }
 | `PATCH` | `/questions/{id}` | 助教以上。`{ acceptedAnswerId }` |
 | `DELETE` | `/questions/{id}` | |
 | `POST` | `/questions/{id}/answers` | 助教以上。`{ body }` |
-| `GET` | `/settings` | |
+| `GET` | `/settings` | 含 `site`、`ranks`、`certifications`、`xp`、`leaderboard`、`weekly`、`features` |
 | `PUT` | `/settings` | **管理員** |
 | `POST` | `/uploads/video` | `{ lessonId, name, size, type }` → 201 `{ mode: "direct"\|"mock", uploadUrl?, id }`。`direct` 時瀏覽器把檔案以 multipart `file` 欄位 POST 到 `uploadUrl` |
 | `GET` | `/uploads/video/{id}` | `{ id, status }`，status ∈ uploading / processing / ready / error；順便寫回 lessons |
 | `POST` | `/uploads/file` | `{ challengeId, name, size, type }` → 201 `{ mode, uploadUrl?, id, objectKey }`。`direct` 時瀏覽器 PUT 檔案內容到 `uploadUrl` |
 | `POST` | `/import/ctfd` | CTFd 匯出 JSON → `{ imported, skipped }`，題目以草稿建立 |
-| `GET` | `/export` | 全部內容 JSON |
+| `GET` | `/export` | 全部內容 JSON。也接受 `Authorization: Bearer $BACKUP_TOKEN`，給每週備份的 Action 用 |
+| `POST` | `/weekly/settle` | 結算本週挑戰：發前三名加分 + 貼 Discord 戰報 → `{ ok, message, awarded, posted }`。同一週重複打不會重複發分。也接受 `BACKUP_TOKEN` |
 | `GET` | `/instructors` | 講師名單（助教以上） |
 | `PUT` | `/instructors/{id}` | 建立或更新講師；`userId` 綁定已登入的 Discord 帳號 |
 | `DELETE` | `/instructors/{id}` | **管理員**。同時清掉路徑、題目、活動上的講師欄位 |
-| `GET` | `/users/{id}` | 學員詳情 `{ user, joinedAt, ledger, solves, lessons, questions }`（助教以上） |
+| `GET` | `/users/{id}` | 學員詳情 `{ user, joinedAt, ledger, solves, lessons, questions }`（助教以上）。`user` 含 `answers` 與 `accepted`，即助教貢獻 |
 | `POST` | `/users/{id}/xp` | **管理員**。`{ delta, reason }` → `{ xp }`；寫一筆 reason = admin 的 xp_ledger |
 | `GET` | `/instances` | 運行中的靶機環境（助教以上） |
 | `DELETE` | `/instances/{id}` | 關閉一個環境：通知 instancer 刪容器，狀態改 stopped（助教以上） |

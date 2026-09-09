@@ -139,8 +139,28 @@ export const eventSchema = z.object({
 export const settingsSchema = z.object({
   site: z.object({ name: z.string().max(60), tagline: z.string().max(120), discordInvite: z.string().max(200), launch: z.string().max(40) }),
   ranks: z.array(z.object({ id: z.string(), name: z.string().max(20), en: z.string().max(30), minXp: z.number().int().min(0), color: z.string(), blurb: z.string().max(80) })).max(12),
+  certifications: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().max(20),
+        en: z.string().max(30),
+        color: z.string(),
+        blurb: z.string().max(120),
+        goal: z.string().max(120),
+        requires: z.object({
+          tracks: z.array(slug).max(20).optional(),
+          trackCount: z.number().int().min(0).max(50).optional(),
+          lessons: z.number().int().min(0).max(1000).optional(),
+          solves: z.number().int().min(0).max(1000).optional(),
+          role: z.enum(["student", "ta", "instructor", "admin"]).optional(),
+        }),
+      }),
+    )
+    .max(10),
   xp: z.object({ checkpointDefault: z.number().int().min(0), lessonDefault: z.number().int().min(0), hintRefundOnSolve: z.boolean() }),
   leaderboard: z.object({ weekStartsOn: z.number().int().min(0).max(6) }),
+  weekly: z.object({ slug: z.union([slug, z.literal("")]), note: z.string().max(300), bonusXp: z.number().int().min(0).max(5000) }),
   features: z.object({ guestProgress: z.boolean(), instances: z.boolean(), questions: z.boolean() }),
 });
 

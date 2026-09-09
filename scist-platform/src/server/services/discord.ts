@@ -31,3 +31,36 @@ export function firstBloodMessage(f: { handle: string; challenge: string; url: s
     embeds: [{ url: f.url, color: 0xff5e5e }],
   };
 }
+
+const MEDAL = ["🥇", "🥈", "🥉"];
+
+/** 每週挑戰的戰報，週結算時貼到 Discord。 */
+export function weeklyReportMessage(w: {
+  name: string;
+  url: string;
+  bonusXp: number;
+  solversThisWeek: number;
+  top: { rank: number; handle: string; schoolShort: string }[];
+}) {
+  const podium = w.top.length
+    ? w.top.map((p) => MEDAL[p.rank - 1] + " **" + p.handle + "**" + (p.schoolShort ? "（" + p.schoolShort + "）" : "")).join("\n")
+    : "這一週沒有人解出來，題目留到下週。";
+
+  return {
+    content: "📅 **本週挑戰結算**：" + w.name,
+    embeds: [
+      {
+        description: podium,
+        url: w.url,
+        color: 0xa4f13b,
+        footer: {
+          text:
+            "本週共 " +
+            w.solversThisWeek +
+            " 人解出" +
+            (w.bonusXp > 0 && w.top.length ? "，前三名各得 " + w.bonusXp + " XP" : ""),
+        },
+      },
+    ],
+  };
+}

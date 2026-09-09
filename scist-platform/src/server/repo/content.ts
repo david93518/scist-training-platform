@@ -12,6 +12,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { sha256Hex } from "@/lib/hash";
 import { deleteObject, publicUrl } from "../services/r2";
+import { cached, invalidate, TTL } from "../cache";
 import type { AdminChallenge, AdminEvent, AdminLesson, AdminTrack } from "@/admin/types";
 import type { Track as PublicTrack, Lesson as PublicLesson } from "@/data/tracks";
 import type { Challenge as PublicChallenge } from "@/data/challenges";
@@ -78,12 +79,14 @@ export async function saveTrack(input: AdminTrack): Promise<AdminTrack> {
     if (Number(n) === 0) await db.delete(schema.modules).where(eq(schema.modules.id, m.id));
   }
   const [saved] = (await listTracksAdmin()).filter((t) => t.id === input.id);
+  contentChanged();
   return saved;
 }
 
 export async function deleteTrack(id: string) {
   const db = await getDb();
   await db.delete(schema.tracks).where(eq(schema.tracks.id, id));
+  contentChanged();
 }
 
 /* ================================ lessons =============================== */
@@ -140,12 +143,14 @@ export async function saveLesson(input: AdminLesson, actorId?: string): Promise<
   };
   await db.insert(schema.lessons).values(row).onConflictDoUpdate({ target: schema.lessons.id, set: row });
   const saved = await db.query.lessons.findFirst({ where: eq(schema.lessons.id, input.id) });
+  contentChanged();
   return toAdminLesson(saved!);
 }
 
 export async function deleteLesson(id: string) {
   const db = await getDb();
   await db.delete(schema.lessons).where(eq(schema.lessons.id, id));
+  contentChanged();
 }
 
 export async function reorderLessons(moduleId: string, ids: string[]) {
@@ -153,6 +158,7 @@ export async function reorderLessons(moduleId: string, ids: string[]) {
   for (const [i, id] of ids.entries()) {
     await db.update(schema.lessons).set({ sortOrder: i }).where(and(eq(schema.lessons.id, id), eq(schema.lessons.moduleId, moduleId)));
   }
+  contentChanged();
 }
 
 /* =============================== challenges ============================= */
@@ -270,6 +276,7 @@ export async function saveChallenge(input: AdminChallenge, actorId?: string): Pr
   await dropOrphanedObjects(before, input.files);
 
   const saved = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, input.id), with: { flags: true, hints: true, files: true } });
+  contentChanged();
   return toAdminChallenge(saved!);
 }
 
@@ -278,6 +285,7 @@ export async function deleteChallenge(id: string) {
   const files = await db.query.challengeFiles.findMany({ where: eq(schema.challengeFiles.challengeId, id) });
   await db.delete(schema.challenges).where(eq(schema.challenges.id, id));
   await dropOrphanedObjects(files, []);
+  contentChanged();
 }
 
 /* ================================ events ================================ */
@@ -310,16 +318,31 @@ export async function saveEvent(input: AdminEvent): Promise<AdminEvent> {
   const row = { ...input, startsAt: new Date(input.startsAt) };
   await db.insert(schema.events).values(row).onConflictDoUpdate({ target: schema.events.id, set: row });
   const [saved] = await db.select().from(schema.events).where(eq(schema.events.id, input.id));
+  contentChanged();
   return toAdminEvent(saved);
 }
 
 export async function deleteEvent(id: string) {
   const db = await getDb();
   await db.delete(schema.events).where(eq(schema.events.id, id));
+  contentChanged();
 }
 
 /* ============================ public shapes ============================= */
-export async function getTracksPublic(): Promise<PublicTrack[]> {
+/**
+ * 後台存檔後，前台不該還要等 TTL 過。site: 也一起丟，因為首頁的題數與總分
+ * 是從已發布的內容算出來的。
+ */
+function contentChanged() {
+  invalidate("content:");
+  invalidate("site:");
+}
+
+export function getTracksPublic(): Promise<PublicTrack[]> {
+  return cached("content:tracks", TTL.content, loadTracksPublic);
+}
+
+async function loadTracksPublic(): Promise<PublicTrack[]> {
   const db = await getDb();
   const rows = await db.query.tracks.findMany({
     where: eq(schema.tracks.status, "published"),
@@ -368,7 +391,11 @@ export async function getLessonVideo(lessonId: string) {
   return l ?? null;
 }
 
-export async function getChallengesPublic(): Promise<PublicChallenge[]> {
+export function getChallengesPublic(): Promise<PublicChallenge[]> {
+  return cached("content:challenges", TTL.content, loadChallengesPublic);
+}
+
+async function loadChallengesPublic(): Promise<PublicChallenge[]> {
   const db = await getDb();
   const rows = await db.query.challenges.findMany({
     where: and(eq(schema.challenges.status, "published"), sql`${schema.challenges.releasedAt} is null or ${schema.challenges.releasedAt} <= now()`),
@@ -421,7 +448,11 @@ export async function getChallengesPublic(): Promise<PublicChallenge[]> {
   });
 }
 
-export async function getEventsPublic(): Promise<PublicEvent[]> {
+export function getEventsPublic(): Promise<PublicEvent[]> {
+  return cached("content:events", TTL.content, loadEventsPublic);
+}
+
+async function loadEventsPublic(): Promise<PublicEvent[]> {
   const db = await getDb();
   const rows = await db.query.events.findMany({ where: eq(schema.events.status, "published"), with: { registrations: true }, orderBy: asc(schema.events.startsAt) });
   return rows.map((e) => ({

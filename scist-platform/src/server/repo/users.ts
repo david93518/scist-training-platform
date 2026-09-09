@@ -8,6 +8,14 @@ export async function listUsersAdmin(): Promise<AdminUser[]> {
   const users = await db.select().from(schema.users).orderBy(desc(schema.users.createdAt)).limit(500);
   const xp = await db.select({ userId: schema.xpLedger.userId, xp: sql<number>`sum(${schema.xpLedger.delta})::int` }).from(schema.xpLedger).groupBy(schema.xpLedger.userId);
   const solves = await db.select({ userId: schema.solves.userId, n: sql<number>`count(*)::int` }).from(schema.solves).groupBy(schema.solves.userId);
+  // 助教貢獻：回答總數，以及其中被發問者採納的數量
+  const answers = await db.select({ userId: schema.answers.authorId, n: sql<number>`count(*)::int` }).from(schema.answers).groupBy(schema.answers.authorId);
+  const accepted = await db
+    .select({ userId: schema.answers.authorId, n: sql<number>`count(*)::int` })
+    .from(schema.answers)
+    .innerJoin(schema.questions, eq(schema.questions.acceptedAnswerId, schema.answers.id))
+    .groupBy(schema.answers.authorId);
+
   return users
     .map((u) => ({
       id: u.id,
@@ -17,6 +25,8 @@ export async function listUsersAdmin(): Promise<AdminUser[]> {
       role: u.role as Role,
       xp: Number(xp.find((x) => x.userId === u.id)?.xp ?? 0),
       solves: Number(solves.find((s) => s.userId === u.id)?.n ?? 0),
+      answers: Number(answers.find((a) => a.userId === u.id)?.n ?? 0),
+      accepted: Number(accepted.find((a) => a.userId === u.id)?.n ?? 0),
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       bannedAt: u.bannedAt?.toISOString() ?? null,
     }))
@@ -50,6 +60,12 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
     .orderBy(desc(schema.lessonProgress.updatedAt))
     .limit(60);
   const [q] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.questions).where(eq(schema.questions.authorId, id));
+  const [answered] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.answers).where(eq(schema.answers.authorId, id));
+  const [acceptedCount] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.answers)
+    .innerJoin(schema.questions, eq(schema.questions.acceptedAnswerId, schema.answers.id))
+    .where(eq(schema.answers.authorId, id));
 
   return {
     user: {
@@ -60,6 +76,8 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
       role: u.role as Role,
       xp: Number(totals?.xp ?? 0),
       solves: solveRows.length,
+      answers: Number(answered?.n ?? 0),
+      accepted: Number(acceptedCount?.n ?? 0),
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       bannedAt: u.bannedAt?.toISOString() ?? null,
     },

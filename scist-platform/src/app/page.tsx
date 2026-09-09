@@ -9,14 +9,15 @@ import { InstructorsSection } from "@/components/marketing/instructors-section";
 import { CommunitySection } from "@/components/marketing/community-section";
 import { CtaSection } from "@/components/marketing/cta-section";
 import { getChallengesPublic, getEventsPublic, getTracksPublic } from "@/server/repo/content";
-import { getInstructorsPublic, getPlayersPublic, getRecentActivity, getSiteStats } from "@/server/repo/site";
+import { WeeklyChallengeBanner } from "@/components/challenges/weekly-challenge";
+import { getInstructorsPublic, getPlayersPublic, getRecentActivity, getSiteStats, getWeeklyChallenge } from "@/server/repo/site";
 import { getSettings } from "@/server/repo/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const settings = await getSettings();
-  const [tracks, challenges, events, instructors, players, activity, stats] = await Promise.all([
+  const [tracks, challenges, events, instructors, players, activity, stats, weekly] = await Promise.all([
     getTracksPublic(),
     getChallengesPublic(),
     getEventsPublic(),
@@ -24,6 +25,7 @@ export default async function HomePage() {
     getPlayersPublic(settings.leaderboard.weekStartsOn),
     getRecentActivity(),
     getSiteStats(),
+    getWeeklyChallenge(settings.weekly, settings.leaderboard.weekStartsOn),
   ]);
 
   return (
@@ -32,6 +34,11 @@ export default async function HomePage() {
       <ActivityTicker items={activity} />
       <TracksGrid tracks={tracks} />
       <LoopSection />
+      {weekly ? (
+        <div className="mx-auto max-w-7xl px-5">
+          <WeeklyChallengeBanner weekly={weekly} />
+        </div>
+      ) : null}
       <ChallengePreview challenges={challenges} totalPoints={stats.totalPoints} boxes={stats.boxes} />
       <LeaderboardPreview players={players} ranks={settings.ranks} />
       <WhySection />

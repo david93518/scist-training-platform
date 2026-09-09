@@ -4,20 +4,27 @@
 import { desc, eq, gte, sql } from "drizzle-orm";
 import { getDb, schema, dbKind } from "../db";
 import { features } from "../env";
+import { cached, invalidate, TTL } from "../cache";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import type { AdminSettings, AdminStats, IntegrationStatus } from "@/admin/types";
 
 export { DEFAULT_SETTINGS };
 
-export async function getSettings(): Promise<AdminSettings> {
+export function getSettings(): Promise<AdminSettings> {
+  return cached("settings", TTL.settings, loadSettings);
+}
+
+async function loadSettings(): Promise<AdminSettings> {
   const db = await getDb();
   const rows = await db.select().from(schema.settings);
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   return {
     site: { ...DEFAULT_SETTINGS.site, ...(map.site as object) },
     ranks: (map.ranks as AdminSettings["ranks"]) ?? DEFAULT_SETTINGS.ranks,
+    certifications: (map.certifications as AdminSettings["certifications"]) ?? DEFAULT_SETTINGS.certifications,
     xp: { ...DEFAULT_SETTINGS.xp, ...(map.xp as object) },
     leaderboard: { ...DEFAULT_SETTINGS.leaderboard, ...(map.leaderboard as object) },
+    weekly: { ...DEFAULT_SETTINGS.weekly, ...(map.weekly as object) },
     features: { ...DEFAULT_SETTINGS.features, ...(map.features as object) },
   };
 }
@@ -43,6 +50,8 @@ export async function saveSettings(input: AdminSettings, actorId?: string): Prom
       .values({ key, value, updatedBy: actorId ?? null })
       .onConflictDoUpdate({ target: schema.settings.key, set: { value, updatedBy: actorId ?? null } });
   }
+  // 站名、階級、本週挑戰都被前台快取讀走，存完要全部丟掉才看得到新值
+  invalidate();
   return getSettings();
 }
 

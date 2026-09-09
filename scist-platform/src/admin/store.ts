@@ -147,6 +147,10 @@ export function buildSeed(): AdminData {
     role: p.isAssistant ? "ta" : "student",
     xp: p.xp,
     solves: p.solves,
+    answers: p.isAssistant ? QUESTIONS.reduce((n, q) => n + q.answers.filter((a) => a.author === p.handle).length, 0) : 0,
+    accepted: p.isAssistant
+      ? QUESTIONS.reduce((n, q) => n + q.answers.filter((a) => a.author === p.handle && a.accepted).length, 0)
+      : 0,
     lastSeenAt: new Date(Date.now() - i * 3600_000 * 5).toISOString(),
     bannedAt: null,
   }));

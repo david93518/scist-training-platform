@@ -96,6 +96,10 @@ export interface AdminApi {
     get(): Promise<AdminSettings>;
     save(settings: AdminSettings): Promise<AdminSettings>;
   };
+  weekly: {
+    /** 發本週挑戰前三名的加分並貼 Discord 戰報；同一週重複按不會重複發 */
+    settle(): Promise<{ ok: boolean; message: string; awarded: number; posted: boolean }>;
+  };
   uploads: {
     /** Cloudflare Stream direct upload ticket for a lesson video */
     video(lessonId: string, file: { name: string; size: number; type: string }): Promise<UploadTicket>;
@@ -492,6 +496,16 @@ export const localApi: AdminApi = {
     },
   },
 
+  weekly: {
+    async settle() {
+      await delay();
+      const slug = store().settings.weekly.slug;
+      if (!slug) return { ok: false, message: "沒有設定本週挑戰。", awarded: 0, posted: false };
+      // 本機模式沒有真實解題紀錄，也沒有 webhook，只回一個看得出流程的結果
+      return { ok: true, message: "本機模式：實際結算與 Discord 公告要接上 API 才會發生。", awarded: 0, posted: false };
+    },
+  },
+
   uploads: {
     async video(lessonId) {
       await delay(200);
@@ -639,6 +653,9 @@ export const httpApi: AdminApi = {
   settings: {
     get: () => http("/settings"),
     save: (s) => http("/settings", { method: "PUT", body: json(s) }),
+  },
+  weekly: {
+    settle: () => http("/weekly/settle", { method: "POST" }),
   },
   uploads: {
     video: (lessonId, file) => http("/uploads/video", { method: "POST", body: json({ lessonId, ...file }) }),

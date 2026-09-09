@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   ArrowRight,
+  Award,
   Check,
   Flag,
   Flame,
@@ -28,7 +29,9 @@ import { allLessons, trackLessonCount, type Track } from "@/data/tracks";
 import type { Challenge } from "@/data/challenges";
 import { SCHOOLS, schoolById } from "@/data/schools";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
-import { useRanks } from "@/components/settings-provider";
+import { useCertifications, useRanks } from "@/components/settings-provider";
+import { Certifications } from "@/components/dashboard/certifications";
+import { evaluateCertifications, highestCert, type CertRole, type CertStats } from "@/lib/certifications";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 
@@ -47,6 +50,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
   const handle = useProgress((s) => s.handle);
   const schoolId = useProgress((s) => s.schoolId);
   const completed = useProgress((s) => s.completedLessons);
+  const role = useProgress((s) => s.role);
   const solved = useProgress((s) => s.solved);
   const checkpoints = useProgress((s) => s.checkpoints);
   const notes = useProgress((s) => s.notes);
@@ -59,6 +63,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
   const [draftHandle, setDraftHandle] = useState("");
 
   const ranks = useRanks();
+  const certRules = useCertifications();
   const myXp = hydrated ? xp : 0;
   const rank = rankFor(myXp, ranks);
   const nxt = nextRank(myXp, ranks);
@@ -95,6 +100,23 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
         .sort((a, b) => a.points - b.points)
         .slice(0, 3)
     : challenges.slice(0, 3);
+
+  const certStats: CertStats = {
+    completedTracks: hydrated
+      ? tracks
+          // every() is true for an empty track, which would hand out the badge for free
+          .filter((t) => {
+            const lessons = allLessons(t);
+            return lessons.length > 0 && lessons.every((l) => completed.includes(lessonKey(t.slug, l.slug)));
+          })
+          .map((t) => t.slug)
+      : [],
+    lessons: doneLessons,
+    solves: solvedFull,
+    role: (hydrated ? role : "student") as CertRole,
+  };
+  const trackNameOf = (slug: string) => tracks.find((t) => t.slug === slug)?.name;
+  const earnedCert = highestCert(evaluateCertifications(certStats, certRules, trackNameOf));
 
   return (
     <div className="flex flex-col gap-6">
@@ -149,6 +171,20 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
                 >
                   {rank.name}
                 </span>
+                {earnedCert ? (
+                  <span
+                    className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[12px] font-semibold"
+                    style={{
+                      color: earnedCert.rule.color,
+                      borderColor: earnedCert.rule.color + "55",
+                      background: earnedCert.rule.color + "14",
+                    }}
+                    title={earnedCert.rule.blurb + "｜" + earnedCert.rule.goal}
+                  >
+                    <Award size={11} />
+                    {earnedCert.rule.name}認證
+                  </span>
+                ) : null}
                 {authenticated ? null : (
                   <button
                     onClick={() => {
@@ -334,6 +370,8 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
           )}
         </div>
       </div>
+
+      <Certifications stats={certStats} trackNameOf={trackNameOf} />
 
       {/* recommended challenges */}
       <div>

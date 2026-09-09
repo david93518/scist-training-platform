@@ -2,9 +2,11 @@
  * Helpers shared by every route handler: JSON responses, error mapping,
  * body validation. Keep handlers thin; logic lives in src/server/repo.
  */
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 import { ApiError } from "./auth";
+import { env } from "./env";
 
 export function json<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
@@ -26,6 +28,22 @@ export async function readJson<T>(req: Request, schema: ZodType<T>): Promise<T> 
     throw new ApiError(400, "invalid body: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; "));
   }
   return parsed.data;
+}
+
+/**
+ * Whether the caller presented BACKUP_TOKEN.
+ *
+ * Scheduled jobs (the weekly backup, the weekly settle) have no way to
+ * complete a Discord login, so they authenticate with this instead. Treat it
+ * as staff-equivalent: only guard endpoints a scheduler is meant to call.
+ */
+export function hasAutomationToken(req: Request) {
+  const expected = env().BACKUP_TOKEN;
+  if (!expected) return false;
+  const given = req.headers.get("authorization")?.replace(/^Bearer /i, "") ?? "";
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** Wrap a handler so thrown ApiErrors become JSON responses. */

@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, RotateCcw, Upload, Wifi, WifiOff, BookOpen } from "lucide-react";
+import { Download, Megaphone, RotateCcw, Upload, Wifi, WifiOff, BookOpen } from "lucide-react";
 import { getAdminApi } from "@/admin/api";
 import { useAdminStore } from "@/admin/store";
 import type { AdminSettings } from "@/admin/types";
 import { Button, buttonClass } from "@/components/ui/primitives";
-import { Field, Input, PageTitle, SaveButton, SectionCard, Select, Toggle, ToastHost, useAsync, useToast } from "@/components/admin/ui";
+import { Field, Input, PageTitle, SaveButton, SectionCard, Select, Textarea, Toggle, ToastHost, useAsync, useToast } from "@/components/admin/ui";
 import type { IntegrationStatus } from "@/admin/types";
+import { CERT_ROLES, type CertRole, type CertRule } from "@/lib/certifications";
 import { formatNumber } from "@/lib/utils";
+
+const ROLE_LABEL: Record<CertRole, string> = { student: "學員", ta: "助教", instructor: "講師", admin: "管理員" };
 
 const INTEGRATIONS: { key: keyof Omit<IntegrationStatus, "mode" | "database">; label: string; env: string; doc: string }[] = [
   { key: "discordLogin", label: "Discord 登入", env: "DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET", doc: "OAuth 流程與 redirect URI" },
@@ -23,6 +26,7 @@ export function SettingsAdmin() {
   const status = useAsync(() => api.status());
   const [draft, setDraft] = useState<AdminSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [settling, setSettling] = useState(false);
   const [importPreview, setImportPreview] = useState<{ name: string; count: number; payload: unknown } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const resetLocal = useAdminStore((s) => s.reset);
@@ -115,6 +119,63 @@ export function SettingsAdmin() {
           </div>
         </SectionCard>
 
+        <SectionCard
+          title="本週挑戰"
+          desc="填題目 slug 就會置頂在首頁與題庫。名次照「這一週第一次解出」的時間算，上週解掉的人不佔名額。"
+        >
+          <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+            <Field label="題目 slug" hint="留空就整個區塊不出現">
+              <Input
+                value={draft.weekly.slug}
+                onChange={(e) => setDraft({ ...draft, weekly: { ...draft.weekly, slug: e.target.value.trim() } })}
+                placeholder="sqli-login"
+                className="font-mono"
+              />
+            </Field>
+            <Field label="前三名加分 XP">
+              <Input
+                type="number"
+                min={0}
+                value={draft.weekly.bonusXp}
+                onChange={(e) => setDraft({ ...draft, weekly: { ...draft.weekly, bonusXp: Math.max(0, Number(e.target.value)) } })}
+                className="font-mono"
+              />
+            </Field>
+          </div>
+          <Field label="說明文字" className="mt-4">
+            <Textarea
+              value={draft.weekly.note}
+              onChange={(e) => setDraft({ ...draft, weekly: { ...draft.weekly, note: e.target.value } })}
+              maxLength={300}
+            />
+          </Field>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={settling || !draft.weekly.slug}
+              onClick={async () => {
+                setSettling(true);
+                try {
+                  const r = await api.weekly.settle();
+                  toast(r.message, r.ok ? "ok" : "info");
+                } finally {
+                  setSettling(false);
+                }
+              }}
+            >
+              <Megaphone size={14} />
+              {settling ? "結算中" : "結算本週並公告"}
+            </Button>
+            <p className="text-[12px] leading-relaxed text-fg-3">
+              發前三名的加分並貼 Discord 戰報。同一週重複按不會重複發分。要自動化就用 GitHub Actions 定時打
+              <span className="font-mono"> POST /api/admin/weekly/settle</span>。
+            </p>
+          </div>
+        </SectionCard>
+
         <SectionCard title="階級門檻" desc="XP 達到門檻就晉升。名稱與顏色會出現在排行榜與個人頁。">
           <div className="flex flex-col gap-2">
             {draft.ranks.map((r, i) => (
@@ -126,6 +187,96 @@ export function SettingsAdmin() {
                 <Input value={r.color} onChange={(e) => setDraft({ ...draft, ranks: draft.ranks.map((x, k) => (k === i ? { ...x, color: e.target.value } : x)) })} className="font-mono" />
               </div>
             ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="學員認證"
+          desc="企劃書的三級認證，依完成的課程與題目認定，跟上面的 XP 階級無關。留白的欄位代表不檢查這一項。"
+        >
+          <div className="flex flex-col gap-3">
+            {draft.certifications.map((c, i) => {
+              const patch = (next: Partial<CertRule>) =>
+                setDraft({ ...draft, certifications: draft.certifications.map((x, k) => (k === i ? { ...x, ...next } : x)) });
+              const patchReq = (next: Partial<CertRule["requires"]>) => patch({ requires: { ...c.requires, ...next } });
+              // 空字串要變成 undefined，不然存進去的 0 會被當成「需要 0 題」而永遠成立
+              const num = (v: string) => (v.trim() === "" ? undefined : Math.max(0, Number(v)));
+
+              return (
+                <div key={c.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <div className="grid grid-cols-[28px_1fr_1fr_96px] items-center gap-2">
+                    <span className="clip-hex h-6 w-6" style={{ background: c.color }} />
+                    <Input value={c.name} onChange={(e) => patch({ name: e.target.value })} />
+                    <Input value={c.en} onChange={(e) => patch({ en: e.target.value })} className="font-mono" />
+                    <Input value={c.color} onChange={(e) => patch({ color: e.target.value })} className="font-mono" />
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <Field label="能力指標">
+                      <Input value={c.blurb} onChange={(e) => patch({ blurb: e.target.value })} />
+                    </Field>
+                    <Field label="對應競賽目標">
+                      <Input value={c.goal} onChange={(e) => patch({ goal: e.target.value })} />
+                    </Field>
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                    <Field label="完課路徑數">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={c.requires.trackCount ?? ""}
+                        onChange={(e) => patchReq({ trackCount: num(e.target.value) })}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="完成課程數">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={c.requires.lessons ?? ""}
+                        onChange={(e) => patchReq({ lessons: num(e.target.value) })}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="解題數">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={c.requires.solves ?? ""}
+                        onChange={(e) => patchReq({ solves: num(e.target.value) })}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="角色至少">
+                      <Select
+                        value={c.requires.role ?? ""}
+                        onChange={(e) => patchReq({ role: (e.target.value || undefined) as CertRole | undefined })}
+                      >
+                        <option value="">不限</option>
+                        {CERT_ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {ROLE_LABEL[r]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                  <Field label="指定路徑" hint="填 slug，用逗號分隔，例如 web-security, pwnable" className="mt-2">
+                    <Input
+                      value={(c.requires.tracks ?? []).join(", ")}
+                      onChange={(e) =>
+                        patchReq({
+                          tracks: e.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      className="font-mono"
+                    />
+                  </Field>
+                </div>
+              );
+            })}
           </div>
         </SectionCard>
 
