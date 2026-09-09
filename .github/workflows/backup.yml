@@ -1,0 +1,33 @@
+name: 每週備份
+
+# Neon 免費層只有 7 天 point-in-time restore，這個把內容另外存一份 90 天。
+on:
+  schedule:
+    - cron: "0 19 * * 0" # 每週一 03:00 台北時間
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 匯出全站內容
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          if [ -z "$BACKUP_TOKEN" ]; then
+            echo "BACKUP_TOKEN 未設定，見 docs/INTEGRATIONS.md" >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --header "authorization: Bearer $BACKUP_TOKEN" \
+            "${APP_URL:-https://gate.scist.org}/api/admin/export" \
+            --output "scist-export.json"
+          python3 -m json.tool scist-export.json > /dev/null # 壞掉的 JSON 不算備份
+          echo "size: $(wc -c < scist-export.json) bytes"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scist-export-${{ github.run_started_at }}
+          path: scist-export.json
+          retention-days: 90

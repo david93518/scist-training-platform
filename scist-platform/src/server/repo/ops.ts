@@ -169,6 +169,16 @@ export async function getAnalytics(): Promise<AdminAnalytics> {
     { label: "解出第一題", value: new Set(solveRows.map((s) => s.userId)).size },
   ];
 
+  // 企劃書 KPI：註冊人數、月活躍、完課率、有人在的學校數
+  const monthAgo = new Date(now.getTime() - 30 * 86400_000);
+  const started = progress.length;
+  const kpi = {
+    registered: users.length,
+    monthlyActive: new Set(ledger.filter((l) => l.at >= monthAgo).map((l) => l.userId)).size,
+    completionRate: started ? progress.filter((p) => p.completedAt).length / started : 0,
+    schools: new Set(users.map((u) => u.schoolId).filter(Boolean)).size,
+  };
+
   const trackStats = tracks.map((t) => {
     const ids = new Set(lessons.filter((l) => l.trackId === t.id).map((l) => l.id));
     const rows = progress.filter((p) => ids.has(p.lessonId));
@@ -213,5 +223,5 @@ export async function getAnalytics(): Promise<AdminAnalytics> {
     .sort((a, b) => a.rate - b.rate)
     .slice(0, 6);
 
-  return { generatedAt: now.toISOString(), weeks, funnel, tracks: trackStats, categories, schools, dropoff };
+  return { generatedAt: now.toISOString(), weeks, funnel, kpi, tracks: trackStats, categories, schools, dropoff };
 }

@@ -194,6 +194,7 @@ export const localApi: AdminApi = {
       { label: "完成一堂課", value: 1188 },
       { label: "解出第一題", value: 937 },
     ];
+    const kpi = { registered: funnel[0].value, monthlyActive: 812, completionRate: 0.52, schools: 21 };
     const tracks = [...s.tracks]
       .filter((t) => t.status === "published")
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -234,7 +235,7 @@ export const localApi: AdminApi = {
       })
       .sort((a, b) => a.rate - b.rate)
       .slice(0, 6);
-    return { generatedAt: now(), weeks, funnel, tracks, categories, schools, dropoff };
+    return { generatedAt: now(), weeks, funnel, kpi, tracks, categories, schools, dropoff };
   },
 
   tracks: {

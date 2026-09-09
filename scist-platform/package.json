@@ -11,6 +11,7 @@
     "db:migrate": "tsx scripts/migrate.mts",
     "db:seed": "tsx scripts/seed.mts",
     "db:reset": "tsx scripts/reset.mts",
+    "db:clean-demo": "tsx scripts/clean-demo.mts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

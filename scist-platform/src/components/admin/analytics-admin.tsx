@@ -112,6 +112,46 @@ function Columns({ title, data, field }: { title: string; data: AdminAnalytics["
   );
 }
 
+/* ------------------------------ KPI vs proposal targets ------------------------------ */
+/** 企劃書第 126-140 行的六個月與十二個月目標。 */
+const GOALS = [
+  { key: "registered", label: "平台註冊學員數", m6: 500, m12: 2000, unit: "人" },
+  { key: "monthlyActive", label: "月活躍學員數", m6: 200, m12: 800, unit: "人" },
+  { key: "completionRate", label: "課程完成率", m6: 0.4, m12: 0.6, unit: "%" },
+  { key: "schools", label: "合作學校數", m6: 25, m12: 40, unit: "校" },
+] as const;
+
+function GoalRow({ label, value, m6, m12, unit }: { label: string; value: number; m6: number; m12: number; unit: string }) {
+  const fmt = (n: number) => (unit === "%" ? pct(n) : formatNumber(n) + " " + unit);
+  const hit = value / m6;
+  const done = hit >= 1;
+  return (
+    <div className="py-2.5">
+      <div className="flex items-baseline gap-2">
+        <span className="truncate text-[13px] font-semibold">{label}</span>
+        <span className={cn("ml-auto shrink-0 font-mono text-[12.5px] font-bold tabular-nums", done ? "text-accent" : "")}>{fmt(value)}</span>
+        <span className="shrink-0 font-mono text-[10.5px] text-fg-3">6 個月目標的 {pct(Math.min(hit, 1))}</span>
+      </div>
+      {/* the bar is scaled to the 12-month target so both goal ticks fit on it */}
+      <div className="relative mt-2 h-[6px] rounded-r-[3px] bg-white/[0.05]">
+        <div className="h-full rounded-r-[3px]" style={{ width: Math.min(100, (value / m12) * 100) + "%", background: ACCENT }} />
+        {[
+          { at: m6, tag: "6M" },
+          { at: m12, tag: "12M" },
+        ].map((g) => (
+          <div key={g.tag} className="absolute -top-1 h-[14px] w-px bg-white/35" style={{ left: Math.min(100, (g.at / m12) * 100) + "%" }}>
+            <span className="absolute -top-[13px] -translate-x-1/2 font-mono text-[9px] text-fg-3">{g.tag}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 font-mono text-[10.5px] text-fg-3">
+        6 個月 {fmt(m6)} · 12 個月 {fmt(m12)}
+        {done ? null : " · 還差 " + fmt(unit === "%" ? m6 - value : Math.ceil(m6 - value))}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------ horizontal bars ------------------------------ */
 function BarRow({ dot, label, value, ratio, sub, title, href }: { dot?: string; label: string; value: string; ratio: number; sub?: string; title?: string; href?: string }) {
   const name = href ? (
@@ -214,6 +254,12 @@ export function AnalyticsAdmin() {
           )}
 
           <div className="grid gap-6 xl:grid-cols-2">
+            <SectionCard title="企劃書 KPI 對照" desc="申請補助時承諾的目標，與現在的實際值。刻度標在 6 個月與 12 個月的門檻上。">
+              {GOALS.map((g) => (
+                <GoalRow key={g.key} label={g.label} value={a.kpi[g.key]} m6={g.m6} m12={g.m12} unit={g.unit} />
+              ))}
+            </SectionCard>
+
             <SectionCard title="學習漏斗" desc="從註冊到解出第一題，每一階留下多少人。">
               <div className="flex flex-col">
                 {a.funnel.map((f, i) => {

@@ -285,6 +285,8 @@ export interface AdminAnalytics {
   /** last 12 weeks, oldest first */
   weeks: { label: string; active: number; solves: number; completions: number }[];
   funnel: { label: string; value: number }[];
+  /** the four numbers the proposal set targets for */
+  kpi: { registered: number; monthlyActive: number; completionRate: number; schools: number };
   tracks: { id: string; name: string; color: string; lessons: number; learners: number; completions: number; rate: number }[];
   categories: { category: Category; label: string; color: string; attempts: number; solves: number; rate: number }[];
   schools: { schoolId: string; school: string; members: number; xp: number; solves: number }[];

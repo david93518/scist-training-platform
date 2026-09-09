@@ -15,6 +15,8 @@ const schema = z.object({
   /** signs the session cookie; generated per process in dev when unset */
   AUTH_SECRET: z.string().min(16).optional(),
   APP_URL: z.string().optional(),
+  /** bearer token that lets the weekly backup job read /api/admin/export */
+  BACKUP_TOKEN: z.string().min(24).optional(),
 
   DISCORD_CLIENT_ID: z.string().optional(),
   DISCORD_CLIENT_SECRET: z.string().optional(),

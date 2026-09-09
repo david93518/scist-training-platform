@@ -17,7 +17,7 @@ import { QUESTIONS } from "../../data/questions";
 import { INSTRUCTORS } from "../../data/instructors";
 import { SCHOOLS } from "../../data/schools";
 import { PLAYERS } from "../../data/players";
-import { RANKS } from "../../lib/xp";
+import { DEFAULT_SETTINGS } from "../../lib/settings-defaults";
 import { seeded } from "../../lib/utils";
 
 export async function isDatabaseEmpty(db: Db) {
@@ -238,14 +238,7 @@ export async function seedDatabase(db: Db, opts: { force?: boolean } = {}): Prom
   }
 
   /* ---------------- settings ---------------- */
-  const defaults: Record<string, unknown> = {
-    site: { name: "SCIST Gate", tagline: "資安的第一道門", discordInvite: "https://discord.gg/scist", launch: "2026-10" },
-    ranks: RANKS.map((r) => ({ id: r.id, name: r.name, en: r.en, minXp: r.minXp, color: r.color, blurb: r.blurb })),
-    xp: { checkpointDefault: 25, lessonDefault: 80, hintRefundOnSolve: false },
-    leaderboard: { weekStartsOn: 0 },
-    features: { guestProgress: true, instances: true, questions: true },
-  };
-  for (const [key, value] of Object.entries(defaults)) {
+  for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
     await db.insert(schema.settings).values({ key, value }).onConflictDoNothing();
   }
 
