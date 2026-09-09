@@ -113,10 +113,11 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="XP" value={formatNumber(u.xp)} color={rank.color} sub={rank.name + (next ? " · 距 " + next.name + " 還差 " + formatNumber(next.minXp - u.xp) : " · 最高階")} />
             <Stat label="解題" value={String(u.solves)} sub="累積 flag 數" />
             <Stat label="發問" value={String(d.questions)} sub="則問題" />
+            <Stat label="助教貢獻" value={String(u.answers)} sub={u.answers ? "則回答 · " + u.accepted + " 則被採納" : "還沒回答過"} />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">

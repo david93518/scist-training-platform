@@ -4,6 +4,8 @@
 
 先讀 [ARCHITECTURE.md](ARCHITECTURE.md)（10 分鐘），做到外部服務時讀 [INTEGRATIONS.md](INTEGRATIONS.md)，API 細節查 [API.md](API.md)。
 
+**還沒做的事以 [TODO.md](TODO.md) 為準**，那裡有完整清單、優先順序與每一項的驗收方式。這份文件只寫「現在能動的東西是怎麼接起來的」。
+
 ## 已完成的串接（本機驗證過）
 
 | 項目 | 做法 | 驗證方式 |
@@ -16,8 +18,13 @@
 | Flag、提示、靶機、報名、發問 | 登入者走 API（伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord）；訪客只在瀏覽器模擬 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
 | 影片 | `video-stage.tsx` 支援 YouTube IFrame API 與 Cloudflare Stream SDK；播到檢查站自動暫停，答對繼續 | 後台把一課設成 YouTube，播放器會在 30% / 60% / 90% 停下 |
 | 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師，導回 `/?login=admin&next=原路徑`，登入框會說明原因、預選管理員，登入後直接回到原本要去的後台頁；開發用 `/admin?as=admin` 會先簽一個 session | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框，登入後落在 `/admin/lessons`；學員身分開 `/admin` 會看到「你目前是 …（學員）」 |
+| 三級認證 | 條件存 `settings.certifications`，判定在 `src/lib/certifications.ts`，儀表板逐項列出還差什麼 | 後台把門檻改小，`/dashboard` 的徽章跟著亮 |
+| 每週挑戰 | `settings.weekly` 指定題目，首頁與題庫置頂；結算發前三名加分並貼 Discord，同一週不重複發 | 後台按「結算本週並公告」，看 toast 與 `xp_ledger` |
+| 公開查詢快取 | `src/server/cache.ts`，內容 60 秒、統計 30 秒，後台存檔即失效，開發環境關閉 | production build 下連開首頁兩次，第二次不打資料庫 |
 
 ## 還要做的事
+
+完整清單在 [TODO.md](TODO.md)。這裡只列部署路徑上的三步。
 
 ### 1. 憑證（各 30 分鐘）
 
@@ -27,14 +34,19 @@
 
 INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資料庫灌入示範內容（或跑 `pnpm db:seed`），之後關掉。用自己的 Discord 登入確認變成管理員後，到後台「學員與角色」把示範帳號停權，或用 SQL 刪 `users` 裡 id 為 `p1`…`p30` 的列。
 
-### 3. 上線後值得做的
+### 3. 出貨預設值（10 分鐘）
+
+`src/lib/settings-defaults.ts` 有幾個為了 demo 好看先填的值，正式站要在後台換掉：`weekly.slug`（現在指到 `sqli-login`）、`site.launch`、`site.discordInvite`，以及三級認證的門檻——那是按「現在只有 14 堂課」訂的，課程上架後要重訂。細節見 TODO.md 的 0.4。
+
+### 4. 上線後值得做的
+
+以下是零碎的小改進，成規模的項目在 TODO.md 的 P4／P5／P6。
 
 - `attempts` 的限流現在是 5 分鐘 20 次，可依需要調整（`repo/learner.ts`）。
 - 學員端的事件（解題、完課）若也要進 `audit_log`，在 `repo/learner.ts` 呼叫 `audit()`。
 - 影片轉檔狀態改用 Cloudflare 的 webhook 主動通知，就不用手動「重新檢查」。
-- 每週重置的週榜其實是「本週累積」，若要真正的重置紀錄可以另開 `seasons` 表。
+- 每週重置的週榜其實是「本週累積」，若要真正的重置紀錄可以另開 `seasons` 表（TODO 3.4）。
 - 學校清單（`schools`）目前只有 seed，若要在後台管理，照 `events` 的樣子加一頁即可。
-- 首頁的活動跑馬燈與各項統計都是即時查詢；流量大了再加 `unstable_cache` 或 `"use cache"`。
 
 ## 已知的邊界
 
@@ -44,3 +56,7 @@ INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資�
 - 本機 PGlite 裡有測試時留下的帳號（tester、helper、dev-admin、e2e-user）與一則測試問題；`pnpm db:reset` 後重跑 `pnpm dev` 就會回到乾淨的示範資料（先停掉 dev server，PGlite 一次只能一個程序開）。
 - `src/data/flags.local.json`、`src/data/flag-hashes.json`、`scripts/hash-flags.mjs` 不是這個專案用的（另一個工作階段留下的），沒有任何程式引用，可刪。
 - 後台的本機模式（`NEXT_PUBLIC_ADMIN_API=local`）資料只存在瀏覽器，跟資料庫無關；那是給看畫面用的。
+- 週的邊界用**伺服器時區**（Vercel 是 UTC），所以正式站的週榜是台北週日早上 08:00 歸零，不是凌晨。同一個檔案裡的連續登入天數卻硬寫死了台北時區，兩套並存。詳見 TODO 6.1。
+- 快取是 process 內的，不跨 instance：後台存檔後其他 instance 最多要等 60 秒才一致。詳見 TODO 6.2。
+- 三級認證在瀏覽器算，伺服器沒有紀錄，所以**後台調不出「誰拿到哪一級」的名單**。要拿去談補助之前得先補（TODO 6.3）。
+- 助教「時數」實際上是回答數與被採納數，線下帶課的時間不會被算進去（TODO 6.4）。

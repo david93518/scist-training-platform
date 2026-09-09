@@ -326,6 +326,7 @@ export async function settleWeeklyChallenge(
 
   let awarded = 0;
   if (w.bonusXp > 0 && w.top.length) {
+    // 用 handle 反查得獎人，靠的是 schema 上的 users_handle_idx（unique）
     const handles = w.top.map((t) => t.handle);
     const winners = await db
       .select({ id: schema.users.id, handle: schema.users.handle })
