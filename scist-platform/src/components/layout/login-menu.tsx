@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock } from "lucide-react";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
 import { SCHOOLS } from "@/data/schools";
@@ -74,7 +75,11 @@ function IconDiscord({ size = 16 }: { size?: number }) {
  */
 export function LoginDialog({ open, onClose, next, reason }: { open: boolean; onClose: () => void; next?: string | null; reason?: string | null }) {
   if (!open) return null;
-  return <LoginDialogBody onClose={onClose} next={next ?? null} reason={reason ?? null} />;
+  // Portaled to <body>: this dialog is mounted from inside the site header,
+  // and the scrolled header has backdrop-blur, which turns it into the
+  // containing block for fixed descendants — the overlay would cover the
+  // 68px header strip instead of the viewport.
+  return createPortal(<LoginDialogBody onClose={onClose} next={next ?? null} reason={reason ?? null} />, document.body);
 }
 
 function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next: string | null; reason: string | null }) {
@@ -327,7 +332,9 @@ export function LoginMenu() {
 
       {menu ? (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+          {/* portaled for the same reason as LoginDialog: fixed inside the
+              blurred header would only cover the header strip */}
+          {createPortal(<div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />, document.body)}
           <div className="card absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden p-1.5" role="menu">
             <div className="px-3 py-2.5">
               <div className="font-mono text-[13px] font-bold">{handle}</div>
