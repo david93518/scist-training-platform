@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2 } from "lucide-react";
+import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock } from "lucide-react";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
 import { SCHOOLS } from "@/data/schools";
 import { useProgress, useHydrated, refreshProfile, type Role } from "@/store/progress";
@@ -21,6 +21,41 @@ const ROLES: { id: Role; label: string; hint: string }[] = [
   { id: "admin", label: "管理員", hint: "全部權限，含設定與角色" },
 ];
 
+const ROLE_LABEL: Record<Role, string> = { student: "學員", ta: "助教", instructor: "講師", admin: "管理員" };
+
+/**
+ * Where the dialog was asked to send the user afterwards. The admin gate
+ * (src/proxy.ts) redirects to /?login=admin&next=/admin/... ; a plain
+ * /?login=1 just opens the dialog.
+ */
+interface LoginIntent {
+  open: boolean;
+  /** "admin" when the admin gate sent the user here */
+  reason: string | null;
+  /** same-origin path to go to after a successful login */
+  next: string | null;
+}
+
+function readIntent(): LoginIntent {
+  if (typeof window === "undefined") return { open: false, reason: null, next: null };
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("login")) return { open: false, reason: null, next: null };
+  const rawNext = params.get("next");
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
+  const reason = params.get("login");
+  return { open: true, reason: reason === "admin" || (next?.startsWith("/admin") ?? false) ? "admin" : reason, next };
+}
+
+/** Drops ?login and ?next from the address bar so a refresh does not reopen the dialog. */
+function clearIntentFromUrl() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("login") && !url.searchParams.has("next")) return;
+  url.searchParams.delete("login");
+  url.searchParams.delete("next");
+  window.history.replaceState(window.history.state, "", url.pathname + (url.search || "") + url.hash);
+}
+
 function IconDiscord({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -33,13 +68,16 @@ function IconDiscord({ size = 16 }: { size?: number }) {
  * Login dialog. Discord is the real login (GET /api/auth/discord). Outside
  * production a second section signs a development session with any handle
  * and role through POST /api/auth/dev, so every role can be exercised.
+ *
+ * `next` (from the admin gate) makes a successful login navigate there
+ * instead of just closing the dialog.
  */
-export function LoginDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function LoginDialog({ open, onClose, next, reason }: { open: boolean; onClose: () => void; next?: string | null; reason?: string | null }) {
   if (!open) return null;
-  return <LoginDialogBody onClose={onClose} />;
+  return <LoginDialogBody onClose={onClose} next={next ?? null} reason={reason ?? null} />;
 }
 
-function LoginDialogBody({ onClose }: { onClose: () => void }) {
+function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next: string | null; reason: string | null }) {
   const siteName = useSettings().site.name;
   const handle = useProgress((s) => s.handle);
   const schoolId = useProgress((s) => s.schoolId);
@@ -47,8 +85,18 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
   const authenticated = useProgress((s) => s.authenticated);
   const logout = useProgress((s) => s.logout);
 
-  // mounted fresh on every open, so initial state can come straight from the store
-  const [draft, setDraft] = useState(() => ({ handle: handle === "guest" ? "" : handle, schoolId, role: role as Role }));
+  const forAdmin = reason === "admin";
+  const canAdmin = role === "instructor" || role === "admin";
+  // sent here by the admin gate while already signed in: the role is the problem, not the session
+  const roleTooLow = forAdmin && authenticated && !canAdmin;
+
+  // mounted fresh on every open, so initial state can come straight from the store.
+  // Coming from the admin gate, the dev form preselects admin so the next visit passes.
+  const [draft, setDraft] = useState(() => ({
+    handle: handle === "guest" ? "" : handle,
+    schoolId,
+    role: (forAdmin && !canAdmin ? "admin" : role) as Role,
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,16 +108,22 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const discordHref = next ? "/api/auth/discord?next=" + encodeURIComponent(next) : "/api/auth/discord";
+
   const devLogin = async () => {
     setBusy(true);
     setError(null);
     try {
       await api("/api/auth/dev", { body: { handle: draft.handle.trim(), schoolId: draft.schoolId, role: draft.role } });
       await refreshProfile(true);
+      if (next) {
+        // full navigation: the admin gate reads the new cookie on the way in
+        window.location.assign(next);
+        return;
+      }
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "登入失敗");
-    } finally {
       setBusy(false);
     }
   };
@@ -85,8 +139,27 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-6">
+          {forAdmin ? (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
+              <Lock size={15} className="mt-0.5 shrink-0 text-amber" />
+              <p className="text-[13px] leading-relaxed text-fg-2">
+                {roleTooLow ? (
+                  <>
+                    你目前是 <span className="font-mono text-fg">{handle}</span>（{ROLE_LABEL[role]}），後台需要講師或管理員權限。
+                    {DEV ? "開發環境可以在下面直接切換身分；" : ""}正式站請管理員到「學員與角色」指派。
+                  </>
+                ) : (
+                  <>
+                    後台需要講師或管理員權限。登入後會直接帶你回{" "}
+                    <span className="font-mono text-fg">{next ?? "/admin"}</span>。
+                  </>
+                )}
+              </p>
+            </div>
+          ) : null}
+
           <a
-            href="/api/auth/discord"
+            href={discordHref}
             className={buttonClass("primary", "lg", "w-full bg-[linear-gradient(135deg,#7289da,#5865f2)] text-white shadow-[0_10px_30px_-10px_rgba(88,101,242,0.8)]")}
             onClick={(e) => {
               if (!DISCORD_READY) {
@@ -118,6 +191,7 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setDraft({ ...draft, handle: e.target.value })}
                     placeholder="例如 n0ir"
                     maxLength={20}
+                    autoFocus
                     className="h-10 rounded-lg border border-white/[0.08] bg-bg-0 px-3 font-mono text-[14px] outline-none focus:border-accent/50"
                   />
                 </label>
@@ -157,7 +231,7 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
                 <div className="mt-2 flex gap-2">
                   <Button className="flex-1" disabled={!draft.handle.trim() || busy} onClick={devLogin}>
                     {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-                    以此身分登入
+                    {next ? "登入並前往" + (next.startsWith("/admin") ? "後台" : "") : "以此身分登入"}
                   </Button>
                   {authenticated ? (
                     <Button
@@ -198,11 +272,6 @@ function LoginDialogBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-function initialOpen() {
-  if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("login");
-}
-
 /** Header control: XP pill + avatar menu, or a login button for guests. */
 export function LoginMenu() {
   const hydrated = useHydrated();
@@ -212,21 +281,29 @@ export function LoginMenu() {
   const authenticated = useProgress((s) => s.authenticated);
   const logout = useProgress((s) => s.logout);
   // ?login=… (the admin gate sends people here) opens the dialog on arrival
-  const [open, setOpen] = useState(initialOpen);
+  const [intent, setIntent] = useState<LoginIntent>(readIntent);
   const [menu, setMenu] = useState(false);
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
   const canAdmin = role === "instructor" || role === "admin";
 
+  const close = () => {
+    setIntent({ open: false, reason: null, next: null });
+    clearIntentFromUrl();
+  };
+  const openPlain = () => setIntent({ open: true, reason: null, next: null });
+
   if (!hydrated) return <span className="h-10 w-24" />;
+
+  const dialog = <LoginDialog open={intent.open} onClose={close} next={intent.next} reason={intent.reason} />;
 
   if (!authenticated) {
     return (
       <>
-        <button onClick={() => setOpen(true)} className={buttonClass("outline", "sm")}>
+        <button onClick={openPlain} className={buttonClass("outline", "sm")}>
           登入
         </button>
-        <LoginDialog open={open} onClose={() => setOpen(false)} />
+        {dialog}
       </>
     );
   }
@@ -273,7 +350,7 @@ export function LoginMenu() {
               <button
                 onClick={() => {
                   setMenu(false);
-                  setOpen(true);
+                  openPlain();
                 }}
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-white/[0.05]"
               >
@@ -295,7 +372,7 @@ export function LoginMenu() {
           </div>
         </>
       ) : null}
-      <LoginDialog open={open} onClose={() => setOpen(false)} />
+      {dialog}
     </div>
   );
 }

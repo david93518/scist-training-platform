@@ -65,6 +65,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="zh-Hant"
+      // globals.css sets scroll-behavior: smooth, which would otherwise make the
+      // scroll-to-top on every route change an animation. Next scrolls instantly
+      // when it sees this attribute and leaves in-page anchors smooth.
+      data-scroll-behavior="smooth"
       className={`${manrope.variable} ${jetbrains.variable} ${notoTC.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">

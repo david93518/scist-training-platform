@@ -40,7 +40,7 @@ flowchart LR
 | `src/app/(pages)` | 前台頁面，全部 `force-dynamic`，每次請求從資料庫讀 |
 | `src/app/admin/**` | 後台：總覽、路徑、課程與影片、題庫、活動、講師、學員與角色、問答、靶機環境、數據、操作紀錄、設定 |
 | `src/app/api/**` | 42 支 Route Handler，合約在 [API.md](API.md) |
-| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有講師以上的 session 就導回首頁 |
+| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有講師以上的 session 就導回 `/?login=admin&next=原路徑`，首頁的登入框讀到後開啟，登入完帶回原頁（Discord 走 `?next=`，開發登入走 `window.location`） |
 | `src/components/**` | UI 元件；`admin/` 是後台專用；`progress-sync.tsx` 負責把 session 同步進學員端狀態 |
 | `src/admin/` | 後台的資料介面 `AdminApi`（HTTP 版與本機版）與型別 |
 | `src/store/progress.ts` | 學員端狀態：訪客存 localStorage；登入後每個動作鏡射到 API，並從 `/api/me` 回填 |

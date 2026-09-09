@@ -15,8 +15,8 @@
 
 | 方法 | 路徑 | 說明 |
 | --- | --- | --- |
-| `GET` | `/api/auth/discord` | 導向 Discord 授權頁；未設定時回 503 |
-| `GET` | `/api/auth/discord/callback?code&state` | Discord 回來的地方；建立或更新使用者，設 cookie，導向 `/dashboard` |
+| `GET` | `/api/auth/discord?next=/admin` | 導向 Discord 授權頁；未設定時回 503。`next` 只接受站內路徑（`/` 開頭、非 `//`），記在 `scist_oauth_next` cookie 十分鐘 |
+| `GET` | `/api/auth/discord/callback?code&state` | Discord 回來的地方；建立或更新使用者，設 cookie，導向 `next`（沒有就 `/dashboard`） |
 | `POST` | `/api/auth/dev` | **僅開發環境**。`{ handle, schoolId?, role }` → 設 cookie |
 | `GET` | `/api/auth/dev?role=admin&handle=dev-admin&next=/admin` | **僅開發環境**。同上但用連結，`/admin?as=admin` 的守門會導到這裡 |
 | `POST` | `/api/auth/logout` | 清 cookie |

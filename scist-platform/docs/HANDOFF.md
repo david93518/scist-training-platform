@@ -15,7 +15,7 @@
 | 訪客進度合併 | 第一次登入時把瀏覽器裡的檢查站、看課進度、筆記重播到帳號 | 未登入答一站再登入，`/api/me` 的 `checkpoints` 有它，XP 也加了 |
 | Flag、提示、靶機、報名、發問 | 登入者走 API（伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord）；訪客只在瀏覽器模擬 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
 | 影片 | `video-stage.tsx` 支援 YouTube IFrame API 與 Cloudflare Stream SDK；播到檢查站自動暫停，答對繼續 | 後台把一課設成 YouTube，播放器會在 30% / 60% / 90% 停下 |
-| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師；開發用 `/admin?as=admin` 會先簽一個 session | 未登入開 `/admin` 被導回首頁並跳出登入框 |
+| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師，導回 `/?login=admin&next=原路徑`，登入框會說明原因、預選管理員，登入後直接回到原本要去的後台頁；開發用 `/admin?as=admin` 會先簽一個 session | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框，登入後落在 `/admin/lessons`；學員身分開 `/admin` 會看到「你目前是 …（學員）」 |
 
 ## 還要做的事
 

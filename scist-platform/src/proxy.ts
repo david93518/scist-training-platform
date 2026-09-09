@@ -3,6 +3,10 @@
  * on every request; this keeps the HTML shell away from anyone who is not an
  * instructor or admin.
  *
+ * Anyone else is sent to the home page with the login dialog open and a
+ * `next` parameter, so a successful login lands them back where they were
+ * going instead of leaving them on the front page.
+ *
  * Development shortcut: /admin?as=admin (or instructor / ta / student) signs a
  * dev session in first, then comes back to the same page. Never in production.
  * NEXT_PUBLIC_ADMIN_API=local turns the gate off, because in that mode the
@@ -45,6 +49,7 @@ export async function proxy(req: NextRequest) {
 
   const home = new URL("/", url);
   home.searchParams.set("login", "admin");
+  home.searchParams.set("next", url.pathname + url.search);
   return NextResponse.redirect(home);
 }
 
