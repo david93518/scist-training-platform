@@ -1,0 +1,40 @@
+name: CI
+
+# push 與 PR 先擋掉過不了 lint / build 的變更，不要等 Vercel 部署才炸。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: scist-platform
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: scist-platform/pnpm-lock.yaml
+
+      - name: 安裝依賴
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+        env:
+          # generateMetadata 會讀設定；沒有資料庫時走 getSettingsSafe 的預設值
+          AUTH_SECRET: ci-build-placeholder-not-a-real-secret

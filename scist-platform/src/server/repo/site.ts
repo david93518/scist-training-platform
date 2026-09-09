@@ -11,6 +11,7 @@ import type { Activity } from "@/data/activity";
 import { schoolById } from "@/data/schools";
 import { notifyDiscord, weeklyReportMessage } from "../services/discord";
 import { cached, invalidate, TTL } from "../cache";
+import { addCalendarDays, calendarDate, weekStart } from "@/lib/timezone";
 import { relativeTime } from "@/lib/utils";
 
 const DAY = 86400_000;
@@ -64,14 +65,6 @@ async function loadSiteStats(): Promise<SiteStats> {
 }
 
 /* ------------------------------ leaderboard roster ------------------------------ */
-function weekStart(weekStartsOn: number) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const diff = (start.getDay() - weekStartsOn + 7) % 7;
-  start.setDate(start.getDate() - diff);
-  return start;
-}
-
 /** Everyone with XP, all-time and this week, in the Player shape the boards render. */
 export function getPlayersPublic(weekStartsOn = 0): Promise<Player[]> {
   return cached("site:players:" + weekStartsOn, TTL.stats, () => loadPlayersPublic(weekStartsOn));
@@ -95,16 +88,16 @@ async function loadPlayersPublic(weekStartsOn: number): Promise<Player[]> {
 
   const activeDays = new Map<string, Set<string>>();
   for (const d of days) (activeDays.get(d.userId) ?? activeDays.set(d.userId, new Set()).get(d.userId)!).add(d.day);
-  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const today = calendarDate();
   const streakOf = (userId: string) => {
     const set = activeDays.get(userId);
     if (!set) return 0;
     let streak = 0;
-    let cursor = new Date(today + "T00:00:00Z").getTime();
-    if (!set.has(today)) cursor -= DAY; // a streak survives until the day is over
-    while (set.has(new Date(cursor).toISOString().slice(0, 10))) {
+    // 今天還沒活動的話，連到昨天仍算連續，給到當天結束
+    let cursor = set.has(today) ? today : addCalendarDays(today, -1);
+    while (set.has(cursor)) {
       streak += 1;
-      cursor -= DAY;
+      cursor = addCalendarDays(cursor, -1);
     }
     return streak;
   };

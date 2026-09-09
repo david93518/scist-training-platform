@@ -10,9 +10,9 @@
 | P1 後台設定沒生效 | ✅ 五項全做完 |
 | P2 前台功能缺口 | ✅ 五項全做完 |
 | P3 企劃書承諾 | 3.1 ✅、3.2 ✅、3.3 ✅、3.5 ✅；3.4 校際競賽未做 |
-| P4 工程基礎 | 4.1 ✅、4.2 ✅、4.3 ✅、4.5 ✅；4.4 測試、4.6 CI 未做 |
-| P5 安全與維運 | 5.1 ✅、5.3 ✅；5.2 內容審核、5.4 錯誤監控、5.5 token 權限過大未做 |
-| P6 已知限制 | 六項，全部未做。都是能上線、但規模長大後會咬人的東西 |
+| P4 工程基礎 | 4.1 ✅、4.2 ✅、4.3 ✅、4.5 ✅、4.6 ✅；4.4 測試未做 |
+| P5 安全與維運 | 5.1 ✅、5.3 ✅、5.4 ✅；5.2 內容審核、5.5 token 權限過大未做 |
+| P6 已知限制 | 6.1 ✅；其餘五項未做。都是能上線、但規模長大後會咬人的東西 |
 
 **只有你能做的**：0.2 憑證、0.3 按下清資料、0.4 換掉出貨預設值。其他都是工程項目。
 
@@ -172,7 +172,7 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 - `getWeeklyChallenge()` 依 `leaderboard.weekStartsOn` 算本週區間，名次照「這一週第一次解出」的時間排，所以上週就解掉的人不佔名額。首頁與題庫頁置頂顯示。
 - `settleWeeklyChallenge()` 發前三名加分並貼 Discord 戰報。加分寫進 `xp_ledger`，label 帶週起日，同一週重複觸發不會重複發。
 - 觸發方式有兩個：後台「結算本週並公告」按鈕，或 `.github/workflows/weekly-settle.yml` 定時打 `POST /api/admin/weekly/settle`。跟備份一樣用 `Authorization: Bearer $BACKUP_TOKEN` 認證，因為 Action 沒辦法做 Discord 登入。
-- cron 排在週六 23:00 UTC，也就是台北週日 07:00。`weekStart()` 用伺服器本地時間，Vercel 是 UTC，所以 `weekStartsOn = 0` 的週界線在週日 00:00 UTC；排在界線前一小時才會收到整週，排在之後會結算到剛開始的下一週。改 `weekStartsOn` 要記得一起改 cron。
+- cron 排在週日 14:00 UTC，也就是台北週日 22:00。週界線是台北時間（見 6.1），預設 `weekStartsOn = 0` 時即週日 00:00 台北。改起算日要記得一起改 cron。
 
 驗收：後台指定一題 → 首頁與 `/challenges` 置頂出現該題 → 按「結算本週並公告」看 toast 與 Discord。
 
@@ -227,12 +227,10 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 
 ⚠️ 這個快取是 **process 內**的，不跨 instance。限制寫在 6.2。
 
-### 4.6 沒有 CI
-GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會在 push 或 PR 時跑 `lint` 與 `build`。現在是靠人記得在本機跑，忘記就會把壞掉的 code 推上去，Vercel 才在部署時炸。
+### 4.6 ✅ CI
+GitHub 上原本只有備份與週結算，push 壞掉的 code 沒人擋。
 
-要補：一個 `.github/workflows/ci.yml`，在 push 與 PR 上跑 `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm build`。build 不需要真的資料庫，`getSettingsSafe()` 那類已經有 fallback。
-
-估時：20 分鐘。
+**已做**：`.github/workflows/ci.yml` 在 push 到 `main` 與每個 PR 跑 `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm build`。working-directory 是 `scist-platform`。build 不需要真的資料庫，`getSettingsSafe()` 會退回預設值。
 
 ---
 
@@ -251,12 +249,18 @@ GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會�
 
 要用得先設好：repo secret `BACKUP_TOKEN`、repo variable `APP_URL`，以及部署環境的同名環境變數。沒設 `BACKUP_TOKEN` 時 bearer 這條路整條關閉。
 
-### 5.4 沒有錯誤監控
-線上出錯只會進 Vercel log，沒有人會發現。建議接 Sentry 免費層。
+### 5.4 ✅ 錯誤監控
+線上出錯只會進 Vercel log，沒有人會發現。
 
-`src/app/error.tsx` 已經把 `digest` 顯示出來，接上 Sentry 之後可以直接對照。
+**已做**：接 `@sentry/nextjs`，沒設 DSN 時整套關閉，本機與 CI 不必申請帳號。
 
-估時：30 分鐘。
+- `src/instrumentation.ts` 的 `register()` + `onRequestError` 抓 Server Component / Route Handler 的錯。
+- `src/instrumentation-client.ts` 抓瀏覽器端。
+- `error.tsx` / `global-error.tsx` 額外 `captureException`，digest 仍顯示在畫面上方便對照。
+- 不上報個資、不開 Session Replay、不上傳 source map（所以不必 `SENTRY_AUTH_TOKEN`）。
+- 後台「設定與整合」多一列，填了 `SENTRY_DSN` 或 `NEXT_PUBLIC_SENTRY_DSN` 就亮。
+
+驗收：Vercel 填同一個 DSN 到兩個變數，故意讓一頁炸掉，Sentry 專案裡出現那筆。
 
 ### 5.5 `BACKUP_TOKEN` 現在也能發 XP
 原本這個 token 只給 `GET /api/admin/export` 用，是唯讀的。3.3 的週結算也接受同一個 token（`hasAutomationToken()`），而那支端點會**寫 xp_ledger**。等於這個字串外洩的後果從「資料被讀走」變成「資料被讀走，而且對方能發 XP」。
@@ -276,20 +280,10 @@ GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會�
 
 這一節不是「功能沒做」，是「做完之後才看清楚的東西」。全部都不影響現在上線，但規模長大或環境改變時會咬人，先寫下來免得之後查半天。
 
-### 6.1 週的邊界用伺服器時區，不是台北時區
-`repo/site.ts` 的 `weekStart()` 用 `new Date()` 加 `setHours(0,0,0,0)`，也就是**伺服器本地時間**。本機是 UTC+8 所以看不出來，Vercel 是 UTC，於是：
+### 6.1 ✅ 週的邊界用伺服器時區，不是台北時區
+`weekStart()` 原本用 `Date#setHours(0,0,0,0)`，看的是伺服器本地時間。Vercel 是 UTC，週榜會在台北週日早上 08:00 才歸零。同一個檔案的連續登入卻手動 `+8 小時`，兩套並存。
 
-- `weekStartsOn = 0`（週日起算）在正式站的實際邊界是**台北週日早上 08:00**，不是週日凌晨。
-- 週榜會在週日早上 08:00 歸零，對學員來說是莫名其妙的時間點。
-- 3.3 的週結算 cron 因此被迫排在台北週日 07:00，只為了卡在邊界之前。
-
-同一個檔案裡的連續登入天數（`streakOf`）反而是對的，它手動加了 `+8 小時` 再取日期，也就是硬寫死台北時區。所以現在**同一個檔案裡有兩套時區處理**。
-
-要補：把時區抽成一個常數（`Asia/Taipei`），`weekStart()` 改用 `Intl.DateTimeFormat` 或 `date-fns-tz` 算出台北的週起點，`streakOf` 的 `+8h` 改讀同一個常數。改完 `weekly-settle.yml` 的 cron 就能排在正常時間（例如台北週日晚上）。
-
-估時：1-2 小時，要小心不要改壞週榜。
-
-驗收：把伺服器時區改成 UTC 跑，週榜的區間與台北時間的週日凌晨對齊。
+**已做**：`src/lib/timezone.ts` 用 `Intl` 算台北日曆。`weekStart()`、`learner.ts` 的週榜、`streakOf` 都改讀它。`weekly-settle.yml` 改排台北週日 22:00（14:00 UTC），卡在下一週開始之前。排行榜文案與後台「週榜起算日」都寫明是台北凌晨。
 
 ### 6.2 快取不跨 instance
 4.5 的快取是一個 process 內的 `Map`。在 Vercel 上每個 lambda instance 各有一份，所以：
@@ -354,9 +348,8 @@ GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會�
 
 | 項目 | 為什麼 | 估時 |
 | --- | --- | --- |
-| 4.6 CI | 現在推壞掉的 code 沒有任何東西會擋 | 20 分 |
-| 5.4 Sentry | 線上出錯不會有人知道 | 30 分 |
 | 5.5 拆 token | 週結算讓備份 token 從唯讀變成能寫 | 30 分 |
+| 5.4 填 Sentry DSN | 程式接好了，沒填變數還是不會上報 | 10 分 |
 
 ### 開站後看情況
 
@@ -364,7 +357,6 @@ GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會�
 | --- | --- | --- |
 | 6.3 認證存到資料庫 | **要拿認證名單去談補助的那一刻** | 一天 |
 | 5.2 內容審核 | 第一次有人在問答區亂發東西 | 看做多完整 |
-| 6.1 時區統一 | 有學員問「為什麼週榜早上八點才歸零」 | 1-2 小時 |
 | 4.4 測試 | 要動 flag 比對或 XP 計算的時候 | 半天 |
 | 6.5 公開個人頁 | 學員想炫耀認證徽章 | 半天 |
 | 6.4 助教時數 | 真的要開始兌換的時候 | 半天 |
@@ -374,6 +366,6 @@ GitHub 上有兩個 workflow（備份、週結算），但沒有任何一個會�
 
 ## 一句話總結
 
-**後台的設定頁真的會生效**（P1 全清），**前台功能缺口補完**（P2 全清），**企劃書承諾的三級認證、助教貢獻統計、每週挑戰都做出來了**（P3 只剩 3.4 校際競賽），**錯誤頁、骨架屏、SEO、限流、備份、快取也都有了**（P4 只剩測試與 CI）。
+**後台的設定頁真的會生效**（P1 全清），**前台功能缺口補完**（P2 全清），**企劃書承諾的三級認證、助教貢獻統計、每週挑戰都做出來了**（P3 只剩 3.4 校際競賽），**錯誤頁、骨架屏、SEO、限流、備份、快取、CI、Sentry、台北時區週界都有了**（P4 只剩測試）。
 
-剩下的分三類：**只有你能做的**是憑證與出貨預設值（0.2、0.4）；**上線前值得補的**是 CI、錯誤監控、token 拆分；**已知但可以先扛著的**是 P6 那六項，其中 6.3（認證只在瀏覽器算，後台調不出名單）最可能在談補助時突然變成擋路的東西。
+剩下的分三類：**只有你能做的**是憑證、Sentry DSN 與出貨預設值（0.2、0.4、5.4 的填值）；**上線前還能再補的**是拆 token（5.5）；**已知但可以先扛著的**是 P6 其餘五項，其中 6.3（認證只在瀏覽器算，後台調不出名單）最可能在談補助時突然變成擋路的東西。

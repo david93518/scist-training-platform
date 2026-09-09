@@ -64,6 +64,7 @@ export function getStatus(): IntegrationStatus {
     r2: features.r2(),
     instancer: features.instancer(),
     webhook: features.discordWebhook(),
+    sentry: features.sentry(),
   };
 }
 

@@ -1,11 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
+
 /**
  * Last resort: the root layout itself failed, so this replaces the whole
  * document. Next does not load globals.css here, which is why the palette is
  * repeated inline instead of using the Tailwind tokens.
  */
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
   return (
     <html lang="zh-Hant">
       <head>

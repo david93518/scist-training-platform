@@ -12,6 +12,7 @@ import { notifyDiscord, firstBloodMessage } from "../services/discord";
 import { getSettings } from "./settings";
 import { expireInstances } from "./ops";
 import { env } from "../env";
+import { weekStart } from "@/lib/timezone";
 
 /* ------------------------------ XP ------------------------------ */
 export async function xpOf(userId: string) {
@@ -294,13 +295,7 @@ export async function setEventRegistration(userId: string, eventId: string, on: 
 /* ------------------------------ leaderboard ------------------------------ */
 export async function leaderboard(scope: "weekly" | "alltime" | "schools", weekStartsOn = 0) {
   const db = await getDb();
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const diff = (start.getDay() - weekStartsOn + 7) % 7;
-  start.setDate(start.getDate() - diff);
-
-  const since = scope === "weekly" ? gte(schema.xpLedger.createdAt, start) : undefined;
+  const since = scope === "weekly" ? gte(schema.xpLedger.createdAt, weekStart(weekStartsOn)) : undefined;
   const rows = await db
     .select({
       userId: schema.xpLedger.userId,

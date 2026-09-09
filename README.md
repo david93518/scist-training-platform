@@ -65,6 +65,7 @@ SCIST Gate 是為南臺灣高中生打造的資安學習平台，將影音課程
 ```text
 .
 ├─ .github/workflows/
+│  ├─ ci.yml                     # push / PR：lint + build
 │  ├─ backup.yml                 # 每週內容備份
 │  └─ weekly-settle.yml          # 每週挑戰結算與公告
 ├─ scist-platform/               # Next.js 主專案
@@ -152,6 +153,7 @@ Copy-Item .env.example .env.local
 | `INSTANCER_URL` | 靶機服務網址 | 真實靶機需要 |
 | `INSTANCER_SECRET` | 平台與 Instancer 的共用密鑰 | 真實靶機需要 |
 | `BACKUP_TOKEN` | GitHub Actions 取得匯出檔的 Bearer Token | 備份需要 |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | 錯誤監控，兩邊填同一個 DSN | 選填 |
 | `AUTO_SEED` | 控制空資料庫是否載入示範內容 | 首次部署使用 |
 | `NEXT_PUBLIC_DISCORD_LOGIN` | 設為 `1` 啟用 Discord 登入按鈕 | 登入需要 |
 
@@ -239,9 +241,11 @@ workflow 每週匯出一次全站 JSON，驗證檔案格式後保存 90 天，�
 
 ### 每週挑戰結算
 
-`.github/workflows/weekly-settle.yml` 在台北時間週日 07:00 呼叫 `POST /api/admin/weekly/settle`，發出本週挑戰前三名的加分並把戰報貼到 Discord。使用與備份相同的 `BACKUP_TOKEN`，設定好備份即可運作。同一週重複觸發不會重複發分，後台「設定與整合 → 本週挑戰」也有同一顆按鈕。
+`.github/workflows/weekly-settle.yml` 在台北時間週日 22:00 呼叫 `POST /api/admin/weekly/settle`，發出本週挑戰前三名的加分並把戰報貼到 Discord。使用與備份相同的 `BACKUP_TOKEN`，設定好備份即可運作。同一週重複觸發不會重複發分，後台「設定與整合 → 本週挑戰」也有同一顆按鈕。週界線是台北時間凌晨，預設 `weekStartsOn = 0` 時即週日 00:00 台北。
 
-時間點是刻意排在週界線之前的：`weekStartsOn` 預設為 0，而週起算用伺服器本地時間（Vercel 為 UTC），界線落在週日 00:00 UTC。若調整 `weekStartsOn`，workflow 的 cron 需一併調整。
+### CI
+
+`.github/workflows/ci.yml` 在 push 到 `main` 與每個 PR 跑 `pnpm lint` 與 `pnpm build`。過不了的變更不會默默進 main。
 
 ## 文件
 
@@ -268,6 +272,9 @@ workflow 每週匯出一次全站 JSON，驗證檔案格式後保存 90 天，�
 - 後台管理、分析、KPI 與操作稽核
 - 公開查詢的 TTL 快取與存檔即失效
 - 錯誤頁、載入骨架、SEO、分享預覽及每週備份
+- push / PR 的 CI（lint + build）
+- 可選的 Sentry 錯誤監控
+- 週榜、連續登入與本週挑戰使用台北時區
 
 需要外部設定（只有專案負責人能做）：
 
@@ -277,8 +284,6 @@ workflow 每週匯出一次全站 JSON，驗證檔案格式後保存 90 天，�
 
 尚未實作：
 
-- CI（push 與 PR 自動跑 lint 與 build）
-- Sentry 或其他錯誤監控
 - 自動化測試
 - 問答檢舉及內容審核
 - SCIST 盃獨立賽季、隊伍與計分
@@ -286,7 +291,6 @@ workflow 每週匯出一次全站 JSON，驗證檔案格式後保存 90 天，�
 已知限制（可以上線，但規模成長後需處理）：
 
 - 三級認證在瀏覽器計算，伺服器沒有紀錄，後台無法匯出認證名單
-- 週的邊界採伺服器時區，正式環境為 UTC，與台北時間相差 8 小時
 - 快取為單一 process 內有效，多 instance 部署下最多 60 秒不一致
 - 助教貢獻統計的是回答數，不包含線下帶課時數
 - 沒有公開個人頁，認證徽章無法分享

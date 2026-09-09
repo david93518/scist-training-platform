@@ -19,6 +19,7 @@ const INTEGRATIONS: { key: keyof Omit<IntegrationStatus, "mode" | "database">; l
   { key: "r2", label: "Cloudflare R2", env: "R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET", doc: "附件預簽名上傳" },
   { key: "instancer", label: "靶機 Instancer", env: "INSTANCER_URL / INSTANCER_SECRET", doc: "每人一份 Docker 環境" },
   { key: "webhook", label: "Discord Webhook", env: "DISCORD_WEBHOOK_URL", doc: "新問題、First Blood 通知" },
+  { key: "sentry", label: "Sentry 錯誤監控", env: "SENTRY_DSN / NEXT_PUBLIC_SENTRY_DSN", doc: "線上 500 與未捕捉錯誤" },
 ];
 export function SettingsAdmin() {
   const api = getAdminApi();
@@ -104,7 +105,7 @@ export function SettingsAdmin() {
             <Field label="完成課程預設 XP">
               <Input type="number" min={0} value={draft.xp.lessonDefault} onChange={(e) => setDraft({ ...draft, xp: { ...draft.xp, lessonDefault: Number(e.target.value) } })} />
             </Field>
-            <Field label="週榜起算日">
+            <Field label="週榜起算日" hint="依台北時間凌晨起算，跟伺服器時區無關">
               <Select value={draft.leaderboard.weekStartsOn} onChange={(e) => setDraft({ ...draft, leaderboard: { weekStartsOn: Number(e.target.value) } })}>
                 <option value={0}>週日</option>
                 <option value={1}>週一</option>

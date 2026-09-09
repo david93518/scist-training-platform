@@ -193,6 +193,7 @@ export interface IntegrationStatus {
   r2: boolean;
   instancer: boolean;
   webhook: boolean;
+  sentry: boolean;
 }
 
 export interface StuckPoint {

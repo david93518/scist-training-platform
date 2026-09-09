@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { Button, LinkButton, TerminalFrame } from "@/components/ui/primitives";
 import { HexField } from "@/components/ui/hex-field";
@@ -13,6 +14,7 @@ import { HexField } from "@/components/ui/hex-field";
 export default function Error({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (
@@ -45,7 +47,7 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
         </div>
 
         <p className="mt-6 font-mono text-[11.5px] leading-relaxed text-fg-3">
-          一直出現的話，把上面那串 digest 貼到 Discord 的 #平台問題，我們照這個去翻 log。
+          一直出現的話，把上面那串 digest 貼到 Discord 的 #平台問題。有接 Sentry 的話同一筆也會進那邊。
         </p>
       </div>
     </main>

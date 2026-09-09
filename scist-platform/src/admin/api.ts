@@ -175,7 +175,7 @@ export const localApi: AdminApi = {
   },
 
   async status() {
-    return { mode: "local", database: "local-storage", discordLogin: false, stream: false, r2: false, instancer: false, webhook: false };
+    return { mode: "local", database: "local-storage", discordLogin: false, stream: false, r2: false, instancer: false, webhook: false, sentry: false };
   },
 
   /** deterministic demo numbers; the API computes the same shape from the ledger */

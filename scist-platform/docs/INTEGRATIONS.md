@@ -141,6 +141,24 @@ INSTANCER_SECRET=跟 VPS 上一樣的密鑰
 
 Vercel 是 serverless：**不能**用 PGlite（每個請求的檔案系統不保證保留），一定要設 `DATABASE_URL`。
 
+## 9. Sentry 錯誤監控 — `src/instrumentation.ts`
+
+沒填就不上報，本機與 CI 都不必申請帳號。
+
+1. sentry.io 建一個 Next.js 專案，複製 DSN。
+2. 在 Vercel（與 `.env.local`）設定：
+
+```env
+SENTRY_DSN=https://…@….ingest.sentry.io/…
+NEXT_PUBLIC_SENTRY_DSN=https://…@….ingest.sentry.io/…
+```
+
+兩邊填同一個值即可。DSN 只能寫事件、不能讀，可以公開。
+
+3. 不必設 `SENTRY_AUTH_TOKEN`：目前不上傳 source map，沒有 token 也能 build。
+
+驗收：後台「設定與整合」Sentry 那列變成已設定。故意讓一頁炸掉（或暫時丟一個 throw），Sentry 專案裡要出現那筆，digest 對得上錯誤頁上的字串。高中生站預設不上報個資，也沒開 Session Replay。
+
 ## 8. 用 VPS 一台包辦
 
 也可以全部放同一台 VPS：`pnpm build && pnpm start`（port 3000）+ 前面 Caddy 反向代理做 HTTPS + Postgres 容器 + instancer。Cloudflare Stream / R2 / Discord 照樣接。這樣 `DATABASE_URL=postgres://…@localhost:5432/scist`。

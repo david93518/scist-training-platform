@@ -24,7 +24,7 @@ export default async function LeaderboardPage() {
       <PageHero
         kicker="LEADERBOARD"
         title="排行榜"
-        desc={"個人榜看你自己走多遠，學校榜看你的社團在 18 校裡站在哪。週榜每" + resetDay + "重置，所以永遠有翻盤的機會。"}
+        desc={"個人榜看你自己走多遠，學校榜看你的社團在 18 校裡站在哪。週榜每" + resetDay + "凌晨（台北時間）重置，所以永遠有翻盤的機會。"}
         color="#ffb84d"
         seed={13}
         stats={[

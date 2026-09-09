@@ -56,7 +56,7 @@ INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資�
 - 本機 PGlite 裡有測試時留下的帳號（tester、helper、dev-admin、e2e-user）與一則測試問題；`pnpm db:reset` 後重跑 `pnpm dev` 就會回到乾淨的示範資料（先停掉 dev server，PGlite 一次只能一個程序開）。
 - `src/data/flags.local.json`、`src/data/flag-hashes.json`、`scripts/hash-flags.mjs` 不是這個專案用的（另一個工作階段留下的），沒有任何程式引用，可刪。
 - 後台的本機模式（`NEXT_PUBLIC_ADMIN_API=local`）資料只存在瀏覽器，跟資料庫無關；那是給看畫面用的。
-- 週的邊界用**伺服器時區**（Vercel 是 UTC），所以正式站的週榜是台北週日早上 08:00 歸零，不是凌晨。同一個檔案裡的連續登入天數卻硬寫死了台北時區，兩套並存。詳見 TODO 6.1。
+- 週榜、連續登入、本週挑戰的日曆都走 `src/lib/timezone.ts` 的台北時間。週結算 cron 在台北週日 22:00。
 - 快取是 process 內的，不跨 instance：後台存檔後其他 instance 最多要等 60 秒才一致。詳見 TODO 6.2。
 - 三級認證在瀏覽器算，伺服器沒有紀錄，所以**後台調不出「誰拿到哪一級」的名單**。要拿去談補助之前得先補（TODO 6.3）。
 - 助教「時數」實際上是回答數與被採納數，線下帶課的時間不會被算進去（TODO 6.4）。

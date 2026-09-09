@@ -37,6 +37,10 @@ const schema = z.object({
 
   INSTANCER_URL: z.string().optional(),
   INSTANCER_SECRET: z.string().optional(),
+
+  /** 錯誤監控。沒填就不上報，本機與 CI 都不必申請帳號 */
+  SENTRY_DSN: z.string().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -69,5 +73,6 @@ export const features = {
     Boolean(env().R2_ACCOUNT_ID && env().R2_ACCESS_KEY_ID && env().R2_SECRET_ACCESS_KEY && env().R2_BUCKET),
   instancer: () => Boolean(env().INSTANCER_URL && env().INSTANCER_SECRET),
   discordWebhook: () => Boolean(env().DISCORD_WEBHOOK_URL),
+  sentry: () => Boolean(env().SENTRY_DSN || env().NEXT_PUBLIC_SENTRY_DSN),
   devLogin: () => env().NODE_ENV !== "production",
 };
