@@ -109,9 +109,15 @@ body::before {
   opacity: 0.035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27180%27 height=%27180%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%272%27 stitchTiles=%27stitch%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/%3E%3C/svg%3E");
 }
-body > * {
-  position: relative;
-  z-index: 1;
+/* Lift body's children above the ::before grain. Inside @layer base so it
+   loses to utilities: unlayered it would beat every positioning class in
+   @layer utilities and flatten `fixed` overlays portaled to <body> (and the
+   header's `sticky`) into position: relative. */
+@layer base {
+  body > * {
+    position: relative;
+    z-index: 1;
+  }
 }
 h1, h2, h3 {
   font-family: var(--font-display);
