@@ -15,12 +15,14 @@
 
 | 方法 | 路徑 | 說明 |
 | --- | --- | --- |
-| `GET` | `/api/auth/discord?next=/admin` | 導向 Discord 授權頁；未設定時回 503。`next` 只接受站內路徑（`/` 開頭、非 `//`），記在 `scist_oauth_next` cookie 十分鐘 |
-| `GET` | `/api/auth/discord/callback?code&state` | Discord 回來的地方；建立或更新使用者，設 cookie，導向 `next`（沒有就 `/dashboard`） |
-| `POST` | `/api/auth/dev` | **僅開發環境**。`{ handle, schoolId?, role }` → 設 cookie |
-| `GET` | `/api/auth/dev?role=admin&handle=dev-admin&next=/admin` | **僅開發環境**。同上但用連結，`/admin?as=admin` 的守門會導到這裡 |
+| `POST` | `/api/auth/register` | `{ handle, password, schoolId? }` → 設 cookie。預設學員；庫裡沒管理員時第一個註冊的人是管理員。帳號 3–20 英數 `._-`，密碼 8–128。同一 IP 10 分鐘最多 8 次 |
+| `POST` | `/api/auth/login` | `{ handle, password }` → 設 cookie。錯了一律「帳號或密碼不對」。同一 IP 10 分鐘最多 8 次 |
+| `POST` | `/api/auth/password` | 需登入。`{ current?, next }`。已有密碼要驗舊的；Discord 舊帳可直接設 |
+| `GET` | `/api/auth/discord?next=/admin` | 可選。導向 Discord 授權頁；未設定時回 503。`next` 只接受站內路徑 |
+| `GET` | `/api/auth/discord/callback?code&state` | Discord 回來的地方；建立或更新使用者，設 cookie |
 | `POST` | `/api/auth/logout` | 清 cookie |
-| `GET` | `/api/me` | 未登入 `{ authenticated: false }`；登入後回 profile（見下） |
+| `POST` / `GET` | `/api/auth/dev` | **只有 `ENABLE_DEV_LOGIN=1` 且非 production**。可自選角色，正式站不要開 |
+| `GET` | `/api/me` | 未登入 `{ authenticated: false }`；登入後回 profile（見下）。角色跟 cookie 不一致時會重簽 cookie |
 
 `/api/me` 的回應跟 `src/store/progress.ts` 的狀態同形狀，`ProgressSync` 直接拿它覆蓋本機 store：
 
@@ -28,6 +30,7 @@
 {
   "authenticated": true,
   "user": { "id": "…", "handle": "tester", "displayName": "tester", "avatarUrl": null, "role": "admin", "schoolId": "tnfsh", "school": "南一中" },
+  "hasPassword": true,
   "xp": 330,
   "watched": { "web-security/sql-injection": 0.62 },
   "completedLessons": ["web-security/http-basics"],
@@ -138,6 +141,7 @@ DELETE ← { "stopped": 1 }
 | `DELETE` | `/instructors/{id}` | **管理員**。同時清掉路徑、題目、活動上的講師欄位 |
 | `GET` | `/users/{id}` | 學員詳情 `{ user, joinedAt, ledger, solves, lessons, questions }`（助教以上）。`user` 含 `answers` 與 `accepted`，即助教貢獻 |
 | `POST` | `/users/{id}/xp` | **管理員**。`{ delta, reason }` → `{ xp }`；寫一筆 reason = admin 的 xp_ledger |
+| `POST` | `/users/{id}/password` | **管理員**。`{ password }` 重設對方密碼 |
 | `GET` | `/instances` | 運行中的靶機環境（助教以上） |
 | `DELETE` | `/instances/{id}` | 關閉一個環境：通知 instancer 刪容器，狀態改 stopped（助教以上） |
 | `DELETE` | `/instances` | 全部關閉 → `{ stopped }` |
@@ -148,7 +152,7 @@ DELETE ← { "stopped": 1 }
 
 ```bash
 J=/tmp/jar
-curl -s -c $J -X POST localhost:3000/api/auth/dev -H 'content-type: application/json' -d '{"handle":"tester","role":"admin"}'
+curl -s -c $J -X POST localhost:3000/api/auth/register -H 'content-type: application/json' -d '{"handle":"tester","password":"password1"}'
 curl -s -b $J localhost:3000/api/me
 curl -s -b $J localhost:3000/api/admin/stats
 curl -s -b $J -X POST localhost:3000/api/challenges/welcome/attempt -H 'content-type: application/json' -d '{"flag":"SCIST{w3lc0m3_t0_th3_g4t3}"}'

@@ -39,8 +39,8 @@ flowchart LR
 | --- | --- |
 | `src/app/(pages)` | 前台頁面，全部 `force-dynamic`，每次請求從資料庫讀 |
 | `src/app/admin/**` | 後台：總覽、路徑、課程與影片、題庫、活動、講師、學員與角色、問答、靶機環境、數據、操作紀錄、設定 |
-| `src/app/api/**` | 42 支 Route Handler，合約在 [API.md](API.md) |
-| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有講師以上的 session 就導回 `/?login=admin&next=原路徑`，首頁的登入框讀到後開啟，登入完帶回原頁（Discord 走 `?next=`，開發登入走 `window.location`） |
+| `src/app/api/**` | Route Handler，合約在 [API.md](API.md) |
+| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有講師以上的 session 就導回 `/?login=admin&next=原路徑`，首頁的登入框讀到後開啟，登入完帶回原頁 |
 | `src/components/**` | UI 元件；`admin/` 是後台專用；`progress-sync.tsx` 負責把 session 同步進學員端狀態 |
 | `src/admin/` | 後台的資料介面 `AdminApi`（HTTP 版與本機版）與型別 |
 | `src/store/progress.ts` | 學員端狀態：訪客存 localStorage；登入後每個動作鏡射到 API，並從 `/api/me` 回填 |
@@ -49,7 +49,7 @@ flowchart LR
 | `src/server/db/` | Drizzle schema、連線、migration、seed |
 | `src/server/repo/` | 所有資料庫存取；page 與 route 都只呼叫這層。`content` 課程與題目、`learner` 進度與解題、`site` 講師、排行榜、統計、動態、`community` 問答、`users`、`instructors`、`ops` 稽核、靶機、數據、`settings`、`transfer` |
 | `src/server/services/` | 外部服務：Stream、R2、instancer、Discord |
-| `src/server/auth.ts` | Session（JWT cookie）、Discord OAuth、dev 登入 |
+| `src/server/auth.ts` | Session（JWT cookie）、帳號密碼、可選 Discord、權限守衛 |
 | `src/server/validators.ts` | 所有 API 輸入的 zod schema |
 | `drizzle/` | SQL migration，由 `pnpm db:generate` 產生 |
 | `scripts/` | migrate / seed / reset |
@@ -61,7 +61,7 @@ flowchart LR
 完整定義在 `src/server/db/schema.ts`，重點：
 
 - **內容**：`tracks → modules → lessons`；`challenges` 帶 `challenge_flags`（只存 SHA-256）、`challenge_hints`、`challenge_files`；`events`；`instructors`；`schools`。
-- **學員**：`users`（Discord 帳號、角色）、`lesson_progress`（看到哪、檢查站、筆記）、`solves`、`attempts`（只存提交的雜湊）、`hint_unlocks`、`xp_ledger`（所有 XP 變動的流水帳，排行榜與統計由它加總）、`instances`、`event_registrations`。
+- **學員**：`users`（帳號、密碼雜湊、可選 Discord、角色）、`lesson_progress`（看到哪、檢查站、筆記）、`solves`、`attempts`（只存提交的雜湊）、`hint_unlocks`、`xp_ledger`（所有 XP 變動的流水帳，排行榜與統計由它加總）、`instances`、`event_registrations`。
 - **社群**：`questions`、`answers`。
 - **營運**：`settings`（key/value JSON）、`audit_log`（後台每個寫入一筆，`/admin/audit` 顯示）。
 
@@ -76,9 +76,10 @@ flowchart LR
 ## 登入與權限
 
 - Session 是 `jose` 簽的 JWT，放在 httpOnly cookie `scist_session`，30 天。
-- 角色四級：`student < ta < instructor < admin`。`requireRole("instructor")` 之類的守衛在每支 API 裡。
-- 角色以資料庫為準（cookie 只是快取），停權的帳號立即失效。
-- 開發環境有 `POST /api/auth/dev`、`GET /api/auth/dev?role=…&next=…` 與 `/admin?as=admin`，production 不存在。
+- 預設登入是帳號密碼（scrypt 雜湊）。註冊一律學員；庫裡還沒有管理員時，第一個註冊的人成為管理員。`ADMIN_HANDLES` / `BOOTSTRAP_ADMIN_*` 可指定管理員。
+- 角色四級：`student < ta < instructor < admin`。`requireRole("instructor")` 之類的守衛在每支 API 裡。角色只能由管理員改，不能在登入時自選。
+- 角色以資料庫為準（cookie 只是快取；`GET /api/me` 會重簽），停權的帳號立即失效。
+- `ENABLE_DEV_LOGIN=1` 才開 `POST/GET /api/auth/dev` 與 `/admin?as=…`。正式站永遠關。
 
 ## 資料庫
 
@@ -95,7 +96,7 @@ flowchart LR
 | 開關 | 不設定 | `NEXT_PUBLIC_ADMIN_API=local` |
 | 資料在哪 | 資料庫 | 瀏覽器 localStorage |
 | 前台會變嗎 | 會 | 不會 |
-| 需要登入嗎 | 要（講師以上） | 不用，`/admin?as=admin` 就能看 |
+| 需要登入嗎 | 要（講師以上） | 不用（只適合看畫面，不要當正式後台） |
 | 適合 | 真正上架內容 | 看畫面、demo、UX 討論 |
 
 ## 部署拓樸（建議）
@@ -107,6 +108,7 @@ flowchart LR
 | 影片 | Cloudflare Stream | 每千分鐘儲存 5 美元、每千分鐘播放 1 美元 |
 | 附件 | Cloudflare R2 | 10 GB 內免費，流量免費 |
 | 靶機 | 企劃書的 Cloud VPS + Docker + instancer | VPS 費用 |
-| 登入與通知 | Discord | 0 |
+| 登入 | 帳號密碼（可選 Discord） | 0 |
+| 通知 | Discord Webhook | 0 |
 
 這樣年維運落在企劃書估的 2 到 3 萬內。

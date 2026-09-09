@@ -64,7 +64,7 @@ export function InstructorsAdmin({ editId }: { editId?: string }) {
       <PageTitle
         kicker="INSTRUCTORS"
         title="講師"
-        desc="邀請講師來講課。講師會顯示在路徑頁、題目的出題者與活動主持。要讓講師能自己上架內容：請他先用 Discord 登入，到「學員與角色」設為講師，再回這裡綁定帳號。"
+        desc="邀請講師來講課。講師會顯示在路徑頁、題目的出題者與活動主持。要讓講師能自己上架內容：請他先註冊或登入，到「學員與角色」設為講師，再回這裡綁定帳號。"
         actions={
           <Button size="sm" onClick={() => setEditing(blank((list.data?.length ?? 0) + 1))}>
             <Plus size={14} />
@@ -129,7 +129,7 @@ export function InstructorsAdmin({ editId }: { editId?: string }) {
               </div>
               <div className={cn("mt-3 flex items-center gap-1.5 text-[12px]", linked ? "text-accent" : "text-fg-3")}>
                 {linked ? <Link2 size={12} /> : <Unlink size={12} />}
-                {linked ? "已綁定 @" + linked.handle + "，可以自己上架" : "尚未綁定 Discord 帳號"}
+                {linked ? "已綁定 @" + linked.handle + "，可以自己上架" : "尚未綁定登入帳號"}
               </div>
             </div>
           );
@@ -225,7 +225,7 @@ export function InstructorsAdmin({ editId }: { editId?: string }) {
                 <Input value={current.accent} onChange={(e) => patch({ accent: e.target.value })} className="w-28 font-mono" />
               </div>
             </div>
-            <Field label="綁定 Discord 帳號" hint={staff.length ? "只列出角色是講師或管理員的帳號" : "還沒有講師或管理員角色的帳號，先到「學員與角色」設定"}>
+            <Field label="綁定登入帳號" hint={staff.length ? "只列出角色是講師或管理員的帳號" : "還沒有講師或管理員角色的帳號，先到「學員與角色」設定"}>
               <Select value={current.userId ?? ""} onChange={(e) => patch({ userId: e.target.value || null })}>
                 <option value="">未綁定</option>
                 {staff.map((u) => (

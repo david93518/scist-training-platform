@@ -15,6 +15,13 @@
       "when": 1788924131954,
       "tag": "0001_lying_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788937200000,
+      "tag": "0002_password_login",
+      "breakpoints": true
     }
   ]
 }

@@ -175,6 +175,22 @@ export const attemptSchema = z.object({ flag: z.string().min(1).max(500) });
 export const questionCreateSchema = z.object({ scope: z.enum(["lesson", "challenge"]), refId: z.string().min(1).max(200), title: z.string().min(1).max(200), body: z.string().max(4000) });
 export const answerCreateSchema = z.object({ body: z.string().min(1).max(4000) });
 export const registerSchema = z.object({ on: z.boolean() });
+export const passwordLoginSchema = z.object({
+  handle: z.string().min(1).max(32),
+  password: z.string().min(1).max(128),
+});
+export const passwordRegisterSchema = z.object({
+  handle: z.string().min(1).max(32),
+  password: z.string().min(8).max(128),
+  schoolId: z.string().max(32).optional(),
+});
+export const changePasswordSchema = z.object({
+  current: z.string().max(128).optional(),
+  next: z.string().min(8).max(128),
+});
+export const adminPasswordSchema = z.object({
+  password: z.string().min(8).max(128),
+});
 export const devLoginSchema = z.object({ handle: z.string().min(1).max(20), schoolId: z.string().optional(), role: roleSchema });
 export const userPatchSchema = z.object({ role: roleSchema.optional(), banned: z.boolean().optional() });
 export const questionPatchSchema = z.object({ acceptedAnswerId: z.string() });

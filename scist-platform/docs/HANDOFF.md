@@ -12,12 +12,12 @@
 | --- | --- | --- |
 | 前台讀資料庫 | 所有頁面 `force-dynamic`，用 `src/server/repo/*` 取資料；`src/data` 只剩型別與 seed | 後台改課名，重新整理 `/learn` 立刻看到 |
 | 資料庫零設定 | 沒設 `DATABASE_URL` 用 PGlite；空資料庫在開發環境自動灌示範內容 | 刪掉 `.data/pglite` 再 `pnpm dev`，首頁有內容 |
-| 登入 | Discord OAuth；開發環境另有 `POST/GET /api/auth/dev`；session 是 httpOnly JWT cookie | 登入對話框選角色登入，`GET /api/me` 回 `authenticated: true` |
+| 登入 | 帳號密碼（`POST /api/auth/register`、`/login`）；可選 Discord；session 是 httpOnly JWT cookie | 註冊一個帳號，`GET /api/me` 回 `authenticated: true`；學員打不開 `/admin` |
 | 進度同步 | `src/store/progress.ts`：登入後每個動作打 API，再從 `/api/me` 回填；訪客留在瀏覽器 | 兩個瀏覽器同帳號，一邊答檢查站，另一邊重整看到 XP |
 | 訪客進度合併 | 第一次登入時把瀏覽器裡的檢查站、看課進度、筆記重播到帳號 | 未登入答一站再登入，`/api/me` 的 `checkpoints` 有它，XP 也加了 |
 | Flag、提示、靶機、報名、發問 | 登入者走 API（伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord）；訪客只在瀏覽器模擬 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
 | 影片 | `video-stage.tsx` 支援 YouTube IFrame API 與 Cloudflare Stream SDK；播到檢查站自動暫停，答對繼續 | 後台把一課設成 YouTube，播放器會在 30% / 60% / 90% 停下 |
-| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師，導回 `/?login=admin&next=原路徑`，登入框會說明原因、預選管理員，登入後直接回到原本要去的後台頁；開發用 `/admin?as=admin` 會先簽一個 session | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框，登入後落在 `/admin/lessons`；學員身分開 `/admin` 會看到「你目前是 …（學員）」 |
+| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師，導回 `/?login=admin&next=原路徑`，登入後回到原頁。角色只能由管理員指派 | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框；學員身分開 `/admin` 會看到權限不足 |
 | 三級認證 | 條件存 `settings.certifications`，判定在 `src/lib/certifications.ts`，儀表板逐項列出還差什麼 | 後台把門檻改小，`/dashboard` 的徽章跟著亮 |
 | 每週挑戰 | `settings.weekly` 指定題目，首頁與題庫置頂；結算發前三名加分並貼 Discord，同一週不重複發 | 後台按「結算本週並公告」，看 toast 與 `xp_ledger` |
 | 公開查詢快取 | `src/server/cache.ts`，內容 60 秒、統計 30 秒，後台存檔即失效，開發環境關閉 | production build 下連開首頁兩次，第二次不打資料庫 |
@@ -28,11 +28,11 @@
 
 ### 1. 憑證（各 30 分鐘）
 
-照 [INTEGRATIONS.md](INTEGRATIONS.md) 依序：資料庫（Neon）→ Discord 登入（記得 `NEXT_PUBLIC_DISCORD_LOGIN=1`）→ Webhook → Stream → R2 → Instancer。每接一項，後台「設定與整合」那一列會變成「已設定」。沒接之前一律走模擬模式，流程照樣能走完。
+照 [INTEGRATIONS.md](INTEGRATIONS.md) 依序：資料庫（Neon）→ 設 `BOOTSTRAP_ADMIN_*` 或自己先註冊當管理員 → 可選 Discord 登入 → Webhook → Stream → R2 → Instancer。每接一項，後台「設定與整合」那一列會變成「已設定」。沒接之前一律走模擬模式，帳號密碼登入照樣能用。
 
 ### 2. 部署（1 小時）
 
-INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資料庫灌入示範內容（或跑 `pnpm db:seed`），之後關掉。用自己的 Discord 登入確認變成管理員後，到後台「學員與角色」把示範帳號停權，或用 SQL 刪 `users` 裡 id 為 `p1`…`p30` 的列。
+INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資料庫灌入示範內容（或跑 `pnpm db:seed`），之後關掉。用帳號密碼註冊（或 `BOOTSTRAP_ADMIN_*`）確認自己是管理員後，到後台「學員與角色」把示範帳號停權，或跑 `pnpm db:clean-demo --yes`。
 
 ### 3. 出貨預設值（10 分鐘）
 

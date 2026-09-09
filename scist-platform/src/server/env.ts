@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Every integration is optional so `pnpm dev` works with zero configuration:
- * PGlite for the database, a dev login instead of Discord, mock instances,
+ * PGlite for the database, account/password login, mock instances,
  * and uploads that fall back to pasting a video ID or file name.
  */
 const schema = z.object({
@@ -22,6 +22,13 @@ const schema = z.object({
   DISCORD_CLIENT_SECRET: z.string().optional(),
   /** comma-separated Discord user IDs that become admins on first login */
   ADMIN_DISCORD_IDS: z.string().default(""),
+  /** comma-separated handles that become admin when they register */
+  ADMIN_HANDLES: z.string().default(""),
+  /** 啟動時若該帳號不存在就建立管理員。兩個都要填才會動 */
+  BOOTSTRAP_ADMIN_HANDLE: z.string().optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),
+  /** 打開才允許 /api/auth/dev 與 /admin?as=…，預設關閉 */
+  ENABLE_DEV_LOGIN: z.enum(["0", "1"]).optional(),
   DISCORD_WEBHOOK_URL: z.string().optional(),
 
   CF_ACCOUNT_ID: z.string().optional(),
@@ -74,5 +81,6 @@ export const features = {
   instancer: () => Boolean(env().INSTANCER_URL && env().INSTANCER_SECRET),
   discordWebhook: () => Boolean(env().DISCORD_WEBHOOK_URL),
   sentry: () => Boolean(env().SENTRY_DSN || env().NEXT_PUBLIC_SENTRY_DSN),
-  devLogin: () => env().NODE_ENV !== "production",
+  /** 選角色那種開發登入。正式站永遠關；本機也要 ENABLE_DEV_LOGIN=1 才開 */
+  devLogin: () => env().NODE_ENV !== "production" && env().ENABLE_DEV_LOGIN === "1",
 };

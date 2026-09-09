@@ -140,6 +140,7 @@ export interface AdminUser {
   accepted: number;
   lastSeenAt: string | null;
   bannedAt: string | null;
+  hasPassword: boolean;
 }
 
 export interface AdminAnswer {
@@ -257,7 +258,7 @@ export interface AdminInstance {
   expiresAt: string;
 }
 
-export type AuditAction = "save" | "delete" | "role" | "ban" | "unban" | "xp" | "kill" | "import" | "settings" | "answer" | "accept" | "reorder";
+export type AuditAction = "save" | "delete" | "role" | "ban" | "unban" | "xp" | "kill" | "import" | "settings" | "answer" | "accept" | "reorder" | "password";
 
 export interface AuditEntry {
   id: string;

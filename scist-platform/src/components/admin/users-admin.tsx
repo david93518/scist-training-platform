@@ -50,7 +50,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
       <PageTitle
         kicker="USERS"
         title="學員與角色"
-        desc="Discord 登入後每個人都是學員。助教可以回答問題，講師可以上架內容，管理員可以改設定與角色。點任何一位看進度、解題與 XP 紀錄。"
+        desc="註冊後預設是學員。助教可以回答問題，講師可以上架內容，管理員可以改設定、角色與重設密碼。點任何一位看進度、解題與 XP 紀錄。"
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
@@ -202,7 +202,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
         </tbody>
       </Table>
       <p className="mt-4 font-mono text-[11.5px] text-fg-3">
-        {api.mode === "local" ? "本機模式顯示的是示範名單。接上 API 後這裡是真實的 Discord 帳號。" : "角色變更立即生效，該學員下次載入頁面就會套用。"}
+        {api.mode === "local" ? "本機模式顯示的是示範名單。接上 API 後這裡是真實帳號。" : "角色變更後，對方下次載入頁面（或重新登入）就會套用；進後台前請先重新整理一次。"}
       </p>
 
       <UserDetailDrawer userId={selected} onClose={() => setSelected(null)} onChanged={() => users.reload()} />

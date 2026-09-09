@@ -35,6 +35,7 @@ const ACTION: Record<AuditAction, { label: string; color: string }> = {
   answer: { label: "回答", color: "#4da3ff" },
   accept: { label: "採納", color: "#a4f13b" },
   reorder: { label: "排序", color: "#6b7a8e" },
+  password: { label: "重設密碼", color: "#b983ff" },
 };
 
 function hrefFor(entity: string, id: string | null) {

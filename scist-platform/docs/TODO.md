@@ -16,6 +16,13 @@
 
 **只有你能做的**：0.2 憑證、0.3 按下清資料、0.4 換掉出貨預設值。其他都是工程項目。
 
+登入已改成帳號密碼，不再用選角色的開發流程。第一個註冊的人是管理員；正式站請設 `BOOTSTRAP_ADMIN_HANDLE` / `BOOTSTRAP_ADMIN_PASSWORD`。
+
+### ✅ 帳號密碼登入與權限（取代開發選角色）
+- `users.password_hash`、`POST /api/auth/register` / `login` / `password`、管理員重設密碼。
+- 註冊不能自選角色。`/api/auth/dev` 與 `/admin?as=…` 預設關閉。
+- 儀表板可改密碼；後台「學員與角色」可重設。
+
 ---
 
 ## P0 上線前必做（現在做不了部署）
@@ -32,7 +39,7 @@
 | --- | --- | --- |
 | Neon（`DATABASE_URL`） | 部署到 Vercel 會失敗（serverless 不能用 PGlite） | 20 分 |
 | `AUTH_SECRET` | production 啟動時直接 throw | 1 分 |
-| Discord OAuth | 沒有人能登入正式站 | 30 分 |
+| Discord OAuth | 可選；沒接也能用帳號密碼登入 | 30 分 |
 | Discord Webhook | 新問題、First Blood 不會通知 | 5 分 |
 | Cloudflare Stream | 影片只能貼 YouTube | 30 分 |
 | Cloudflare R2 | 題目附件無法下載 | 30 分 |

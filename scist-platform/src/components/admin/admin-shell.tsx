@@ -133,10 +133,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <p className="mt-3 text-[14px] leading-relaxed text-fg-2">
             你目前是 <span className="font-mono text-fg">{authenticated || api.mode === "local" ? handle : "未登入"}</span>
             {authenticated || api.mode === "local" ? <>，角色「{ROLE_LABEL[role]}」</> : null}。
-            正式站以 Discord 登入後由管理員指派角色；開發時可以用下面的登入切換，或直接開 /admin?as=admin。
+            用帳號密碼登入。角色由管理員在「學員與角色」指派，不能自己選。
           </p>
           <button onClick={() => setLogin(true)} className={buttonClass("primary", "md", "mt-6 w-full")}>
-            登入 / 切換角色
+            登入
           </button>
           <Link href="/" className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
             <ArrowLeft size={13} />

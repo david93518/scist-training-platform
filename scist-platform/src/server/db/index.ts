@@ -20,6 +20,7 @@ import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator";
 import * as schema from "./schema";
 import { env } from "../env";
 import { isDatabaseEmpty, seedDatabase } from "./seed";
+import { ensureBootstrapAdmin } from "./bootstrap-admin";
 
 export type Db = PgliteDatabase<typeof schema> | PostgresJsDatabase<typeof schema>;
 
@@ -50,6 +51,7 @@ async function connect(): Promise<Db> {
     await migratePostgres(db, { migrationsFolder: MIGRATIONS });
     cache.kind = "postgres";
     await seedIfEmpty(db);
+    await ensureBootstrapAdmin(db);
     return db;
   }
 
@@ -61,6 +63,7 @@ async function connect(): Promise<Db> {
   await migratePglite(db, { migrationsFolder: MIGRATIONS });
   cache.kind = "pglite";
   await seedIfEmpty(db);
+  await ensureBootstrapAdmin(db);
   return db;
 }
 

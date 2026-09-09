@@ -29,6 +29,7 @@ export async function listUsersAdmin(): Promise<AdminUser[]> {
       accepted: Number(accepted.find((a) => a.userId === u.id)?.n ?? 0),
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       bannedAt: u.bannedAt?.toISOString() ?? null,
+      hasPassword: Boolean(u.passwordHash),
     }))
     .sort((a, b) => b.xp - a.xp);
 }
@@ -80,6 +81,7 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
       accepted: Number(acceptedCount?.n ?? 0),
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       bannedAt: u.bannedAt?.toISOString() ?? null,
+      hasPassword: Boolean(u.passwordHash),
     },
     joinedAt: u.createdAt.toISOString(),
     ledger: ledger.map((l) => ({ id: l.id, delta: l.delta, reason: l.reason as XpReason, label: l.label, at: l.createdAt.toISOString() })),

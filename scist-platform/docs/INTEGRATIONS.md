@@ -21,7 +21,30 @@ DATABASE_URL=… pnpm db:seed
 
 驗收：後台總覽的整合狀態顯示資料庫 `postgres`。
 
-## 2. Discord 登入 — `src/server/auth.ts`、`src/app/api/auth/discord/*`
+## 2. 帳號密碼登入 — `src/server/auth.ts`、`src/app/api/auth/login`、`register`
+
+這是預設登入。右上角註冊或登入即可，不必接 Discord。
+
+- 註冊預設是學員。帳號 3–20 個英數、底線、點或連字號；密碼至少 8 個字，用 scrypt 存雜湊。
+- 還沒有能登入的管理員時（有密碼或綁了 Discord），**下一個註冊的人會成為管理員**。以前開發登入留下、沒設密碼的 admin 不算。之後角色只能由管理員在後台「學員與角色」指派。
+- 正式站不要賭第一個註冊的人，改用環境變數指定：
+
+```env
+AUTH_SECRET=至少32個隨機字元
+ADMIN_HANDLES=yourhandle
+BOOTSTRAP_ADMIN_HANDLE=yourhandle
+BOOTSTRAP_ADMIN_PASSWORD=至少8個字
+```
+
+`BOOTSTRAP_ADMIN_*` 兩個都填時，啟動會建立（或補齊）這個管理員。帳號已有密碼就不會覆蓋。
+
+示範 seed 帳號沒有密碼，不能登入。以前用「選角色」開發登入留下的帳號也一樣，請重新註冊或請管理員重設密碼。
+
+`ENABLE_DEV_LOGIN=1` 才會打開舊的選角色後門，正式站不要開。
+
+驗收：註冊一個學員 → 打不開 `/admin`；再用管理員把該帳號改成講師 → 重新整理後打得開。
+
+## 2.1 Discord 登入（可選）— `src/app/api/auth/discord/*`
 
 1. https://discord.com/developers/applications → New Application。
 2. OAuth2 → Redirects 加 `https://你的網域/api/auth/discord/callback`（本機是 `http://localhost:3000/api/auth/discord/callback`）。

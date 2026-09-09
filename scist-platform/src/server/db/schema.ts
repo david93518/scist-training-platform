@@ -64,6 +64,8 @@ export const users = pgTable(
     displayName: text("display_name"),
     avatarUrl: text("avatar_url"),
     email: text("email"),
+    /** scrypt 雜湊；沒設的帳號（舊 Discord / seed）不能用密碼登入 */
+    passwordHash: text("password_hash"),
     role: userRole("role").notNull().default("student"),
     schoolId: text("school_id").references(() => schools.id, { onDelete: "set null" }),
     bio: text("bio"),

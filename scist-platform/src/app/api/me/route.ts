@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/server/auth";
+import { getCurrentUser, refreshSessionIfStale } from "@/server/auth";
 import { route, json } from "@/server/http";
 import { getProfile } from "@/server/repo/learner";
 
@@ -6,5 +6,6 @@ import { getProfile } from "@/server/repo/learner";
 export const GET = route(async () => {
   const user = await getCurrentUser();
   if (!user) return json({ authenticated: false }, { status: 200 });
+  await refreshSessionIfStale({ id: user.id, handle: user.handle, role: user.role });
   return json({ authenticated: true, ...(await getProfile(user.id)) });
 });

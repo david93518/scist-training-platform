@@ -31,6 +31,7 @@ import { SCHOOLS, schoolById } from "@/data/schools";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
 import { useCertifications, useRanks } from "@/components/settings-provider";
 import { Certifications } from "@/components/dashboard/certifications";
+import { PasswordForm } from "@/components/dashboard/password-form";
 import { evaluateCertifications, highestCert, type CertRole, type CertStats } from "@/lib/certifications";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
@@ -238,6 +239,8 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
           </div>
         </div>
       </div>
+
+      {hydrated && authenticated ? <PasswordForm /> : null}
 
       {/* up next */}
       {upNext ? (

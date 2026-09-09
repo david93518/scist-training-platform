@@ -153,6 +153,7 @@ export function buildSeed(): AdminData {
       : 0,
     lastSeenAt: new Date(Date.now() - i * 3600_000 * 5).toISOString(),
     bannedAt: null,
+    hasPassword: false,
   }));
 
   const questions: AdminQuestion[] = QUESTIONS.map((q) => ({

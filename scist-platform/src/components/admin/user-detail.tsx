@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, CalendarDays, Clock, Minus, Plus, Undo2, Zap, Check } from "lucide-react";
+import { Ban, CalendarDays, Clock, KeyRound, Minus, Plus, Undo2, Zap, Check } from "lucide-react";
 import { getAdminApi } from "@/admin/api";
 import type { Role, XpReason } from "@/admin/types";
 import { schoolById } from "@/data/schools";
@@ -42,6 +42,7 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
   const detail = useAsync(() => (userId ? api.users.detail(userId) : Promise.resolve(null)), [userId]);
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"ledger" | "solves" | "lessons">("ledger");
 
@@ -96,6 +97,7 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
                   {ROLE_LABEL[u.role].toUpperCase()}
                 </span>
                 {u.bannedAt ? <span className="rounded-md border border-red/40 bg-red/10 px-2 py-0.5 font-mono text-[10.5px] text-red">已停權</span> : null}
+                {u.hasPassword ? null : <span className="rounded-md border border-white/15 px-2 py-0.5 font-mono text-[10.5px] text-fg-3">尚未設密碼</span>}
               </div>
               <div className="mt-1 text-[13px] text-fg-2">
                 {u.displayName} · {schoolById(u.schoolId ?? "")?.name ?? "未填學校"}
@@ -185,6 +187,39 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
               </Button>
             </div>
             <p className="mt-2 text-[11.5px] text-fg-3">走 XP 流水帳，排行榜會一起變；這個操作會留在操作紀錄裡。</p>
+          </form>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (newPassword.length < 8) return toast("密碼至少 8 個字", "err");
+              setBusy(true);
+              try {
+                await api.users.setPassword(u.id, newPassword);
+                toast("已重設 " + u.handle + " 的密碼");
+                setNewPassword("");
+                await refresh();
+              } catch (err) {
+                toast(err instanceof Error ? err.message : "重設失敗", "err");
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
+          >
+            <div className="mb-3 flex items-center gap-2 text-[13.5px] font-bold">
+              <KeyRound size={14} className="text-accent" />
+              重設密碼
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="新密碼" className="min-w-[220px] flex-1">
+                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="至少 8 個字" autoComplete="new-password" />
+              </Field>
+              <Button type="submit" size="md" disabled={busy || newPassword.length < 8}>
+                重設
+              </Button>
+            </div>
+            <p className="mt-2 text-[11.5px] text-fg-3">對方下次請用這組新密碼登入。這個操作會留在操作紀錄裡。</p>
           </form>
 
           <div>

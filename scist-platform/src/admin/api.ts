@@ -76,6 +76,7 @@ export interface AdminApi {
     setBanned(id: string, banned: boolean): Promise<void>;
     /** manual XP correction; resolves to the user's new total */
     adjustXp(id: string, delta: number, reason: string): Promise<number>;
+    setPassword(id: string, password: string): Promise<void>;
   };
   questions: {
     list(): Promise<AdminQuestion[]>;
@@ -426,6 +427,12 @@ export const localApi: AdminApi = {
       log("xp", "user", id, u.handle + " " + (delta > 0 ? "+" : "") + delta + " XP · " + reason);
       return xp;
     },
+    async setPassword(id, _password) {
+      const s = store();
+      const u = s.users.find((x) => x.id === id);
+      s.set("users", s.users.map((x) => (x.id === id ? { ...x, hasPassword: true } : x)));
+      log("password", "user", id, (u?.handle ?? id) + " 重設密碼");
+    },
   },
 
   questions: {
@@ -635,6 +642,7 @@ export const httpApi: AdminApi = {
     setRole: (id, role) => http("/users/" + id, { method: "PATCH", body: json({ role }) }),
     setBanned: (id, banned) => http("/users/" + id, { method: "PATCH", body: json({ banned }) }),
     adjustXp: (id, delta, reason) => http<{ xp: number }>("/users/" + id + "/xp", { method: "POST", body: json({ delta, reason }) }).then((r) => r.xp),
+    setPassword: (id, password) => http("/users/" + id + "/password", { method: "POST", body: json({ password }) }),
   },
   questions: {
     list: () => http("/questions"),

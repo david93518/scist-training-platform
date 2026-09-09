@@ -46,6 +46,7 @@ export interface InstanceInfo {
 export interface ServerProfile {
   authenticated: true;
   user: { id: string; handle: string; displayName: string | null; avatarUrl: string | null; role: Role; schoolId: string | null; school: string | null };
+  hasPassword: boolean;
   xp: number;
   watched: Record<LessonKey, number>;
   completedLessons: LessonKey[];
@@ -68,6 +69,7 @@ interface ProgressState {
   handle: string;
   schoolId: string;
   role: Role;
+  hasPassword: boolean;
   xp: number;
 
   /** 0..1 watch position per lesson */
@@ -111,6 +113,7 @@ const initial = {
   handle: "guest",
   schoolId: "tnfsh",
   role: "student" as Role,
+  hasPassword: false,
   xp: 0,
   watched: {} as Record<LessonKey, number>,
   completedLessons: [] as LessonKey[],
@@ -224,6 +227,7 @@ export const useProgress = create<ProgressState>()(
           userId: p.user.id,
           handle: p.user.handle,
           role: p.user.role,
+          hasPassword: Boolean(p.hasPassword),
           schoolId: p.user.schoolId ?? s.schoolId,
           xp: p.xp,
           watched: p.watched ?? {},

@@ -111,14 +111,15 @@ pnpm dev
 開啟：
 
 - 前台：<http://localhost:3000>
-- 後台：<http://localhost:3000/admin?as=admin>
+- 後台：<http://localhost:3000/admin>（要講師或管理員帳號）
 
 本機開發不需要任何環境變數：
 
 - 未設定 `DATABASE_URL` 時使用 `.data/pglite` 內的 PGlite。
 - 空資料庫會自動載入示範內容。
-- 開發環境提供帳號與角色選擇登入。
+- 用右上角「登入」註冊帳號；資料庫還沒有管理員時，第一個註冊的人會成為管理員。
 - 未設定的外部服務使用模擬模式，方便先測試完整介面流程。
+- 示範 seed 帳號沒有密碼，不能登入。
 
 ## 環境變數
 
@@ -142,9 +143,12 @@ Copy-Item .env.example .env.local
 | `DATABASE_URL` | PostgreSQL 連線字串 | 必填 |
 | `AUTH_SECRET` | Session JWT 簽章密鑰，至少 32 字元 | 必填 |
 | `APP_URL` | 網站完整網址 | 必填 |
-| `DISCORD_CLIENT_ID` | Discord OAuth Client ID | 登入需要 |
-| `DISCORD_CLIENT_SECRET` | Discord OAuth Client Secret | 登入需要 |
-| `ADMIN_DISCORD_IDS` | 首次登入即成為管理員的 Discord ID | 建議 |
+| `ADMIN_HANDLES` | 註冊時自動成為管理員的帳號（逗號分隔） | 建議 |
+| `BOOTSTRAP_ADMIN_HANDLE` | 啟動時建立或補齊的管理員帳號 | 正式站建議 |
+| `BOOTSTRAP_ADMIN_PASSWORD` | 上述帳號的密碼（至少 8 字） | 正式站建議 |
+| `DISCORD_CLIENT_ID` | Discord OAuth Client ID | 可選 |
+| `DISCORD_CLIENT_SECRET` | Discord OAuth Client Secret | 可選 |
+| `ADMIN_DISCORD_IDS` | 首次 Discord 登入即成為管理員的 ID | 可選 |
 | `DISCORD_WEBHOOK_URL` | 新問題及 First Blood 通知 | 選填 |
 | `CF_ACCOUNT_ID` | Cloudflare 帳號 ID | Stream 需要 |
 | `CF_STREAM_API_TOKEN` | Cloudflare Stream API Token | Stream 需要 |
@@ -155,7 +159,7 @@ Copy-Item .env.example .env.local
 | `BACKUP_TOKEN` | GitHub Actions 取得匯出檔的 Bearer Token | 備份需要 |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | 錯誤監控，兩邊填同一個 DSN | 選填 |
 | `AUTO_SEED` | 控制空資料庫是否載入示範內容 | 首次部署使用 |
-| `NEXT_PUBLIC_DISCORD_LOGIN` | 設為 `1` 啟用 Discord 登入按鈕 | 登入需要 |
+| `NEXT_PUBLIC_DISCORD_LOGIN` | 設為 `1` 顯示 Discord 登入按鈕 | 可選 |
 
 請勿提交 `.env.local` 或任何正式憑證。完整申請與設定流程請見 [外部服務整合指南](scist-platform/docs/INTEGRATIONS.md)。
 
@@ -190,11 +194,12 @@ pnpm db:clean-demo --yes # 正式清除示範帳號與灌水數據
 student → ta → instructor → admin
 ```
 
-- 正式環境只使用 Discord OAuth。
+- 預設用帳號密碼登入。註冊後是學員；庫裡還沒有管理員時，第一個註冊的人是管理員。
+- 角色只能由管理員在後台指派，登入時不能自己選。
 - Session 是簽章 JWT，儲存在 httpOnly cookie，有效期 30 天。
 - API 每次會重新確認資料庫中的角色與停權狀態。
 - `/admin` 需要 `instructor` 以上權限。
-- 開發登入與 `/admin?as=admin` 僅在非 production 環境可用。
+- `ENABLE_DEV_LOGIN=1` 才會打開舊的選角色開發登入，正式站不要開。
 
 ## 資料與安全設計
 

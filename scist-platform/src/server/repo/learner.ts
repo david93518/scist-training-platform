@@ -67,6 +67,7 @@ export async function getProfile(userId: string) {
 
   return {
     user: { id: user.id, handle: user.handle, displayName: user.displayName, avatarUrl: user.avatarUrl, role: user.role, schoolId: user.schoolId, school: user.school?.short ?? null },
+    hasPassword: Boolean(user.passwordHash),
     xp: await xpOf(userId),
     watched: Object.fromEntries(progress.map((p) => [keyOf(p.lessonId), p.watched])),
     completedLessons: progress.filter((p) => p.completedAt).map((p) => keyOf(p.lessonId)),

@@ -12,7 +12,7 @@ SCIST 南臺灣學生資訊社群數位轉型計畫的互動平台。把「影�
 | --- | --- |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 現況、已驗證的串接、還要做的事 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 系統架構、資料模型、一個請求怎麼走 |
-| [docs/API.md](docs/API.md) | 42 支 API 的合約 |
+| [docs/API.md](docs/API.md) | API 合約 |
 | [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | Discord、Cloudflare Stream、R2、Instancer、Neon、Vercel 怎麼接 |
 | [instancer/README.md](instancer/README.md) | VPS 上的靶機服務 |
 
@@ -24,10 +24,10 @@ pnpm dev
 ```
 
 - 前台：http://localhost:3000
-- 後台：http://localhost:3000/admin?as=admin（開發環境專用，會自動簽一個管理員 session；正式站以 Discord 登入）
-- 登入：右上角「登入」。開發環境可以用任何名稱、任何角色登入，會在資料庫建立真的帳號。沒權限就開後台網址時會被帶回首頁的登入框，登入後自動回到原本要去的頁面。
+- 後台：http://localhost:3000/admin（要講師或管理員帳號；沒權限會被帶回首頁登入框）
+- 登入：右上角「登入」→ 註冊或登入。註冊預設是學員；資料庫還沒有管理員時，**第一個註冊的人會成為管理員**。之後角色只能由管理員在「學員與角色」指派，不能自己選。
 
-不需要任何環境變數。沒設定 `DATABASE_URL` 時資料庫是內嵌的 PGlite，存在 `.data/pglite`，空資料庫會自動灌入示範內容。外部服務全部沒設定時走模擬模式，畫面流程照樣能走完。要接真服務時複製 `.env.example` 為 `.env.local` 填入。
+不需要任何環境變數就能本機開發。沒設定 `DATABASE_URL` 時資料庫是內嵌的 PGlite，存在 `.data/pglite`，空資料庫會自動灌入示範內容（那些示範帳號沒有密碼，不能登入）。外部服務全部沒設定時走模擬模式，畫面流程照樣能走完。要接真服務時複製 `.env.example` 為 `.env.local` 填入。正式站建議設 `BOOTSTRAP_ADMIN_HANDLE` 與 `BOOTSTRAP_ADMIN_PASSWORD`，不要賭第一個註冊的人。
 
 其他指令：
 
@@ -49,7 +49,7 @@ pnpm db:studio      # Drizzle Studio 看資料
 | UI | React 19 + Tailwind CSS v4 |
 | 學員端狀態 | Zustand；訪客存 localStorage，登入後鏡射到 API 並以伺服器為準 |
 | 資料庫 | Drizzle ORM；本機 PGlite，正式 Postgres（Neon / Supabase / 自架） |
-| 登入 | Discord OAuth，jose 簽 JWT 放 httpOnly cookie；開發環境另有 dev 登入 |
+| 登入 | 帳號密碼（scrypt）；可選 Discord OAuth；jose 簽 JWT 放 httpOnly cookie |
 | 驗證 | zod（所有 API 輸入在 `src/server/validators.ts`） |
 | 影片 | YouTube IFrame API 或 Cloudflare Stream Player SDK，同一個播放器 |
 | 附件 | Cloudflare R2 預簽名直傳 |
@@ -82,7 +82,7 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 | `/challenges` | 題庫。可依類別、難度、解題狀態篩選與搜尋 |
 | `/challenges/[slug]` | 題目詳情：環境啟動、提示解鎖、Flag 提交、討論、最近解出的人 |
 | `/leaderboard` | 週榜、總榜、18 校聯防積分 |
-| `/dashboard` | 個人 XP、階級、各領域進度、活動紀錄、筆記 |
+| `/dashboard` | 個人 XP、階級、各領域進度、活動紀錄、筆記、變更密碼 |
 | `/community` | 活動報名、助教賦能計畫、講師群、18 校名單 |
 | `/about` | 組織介紹、平台架構、預算、KPI、贊助方案 |
 | `/admin` | 後台總覽：數字、卡關點、整合狀態、待處理 |
@@ -90,8 +90,8 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 | `/admin/lessons` | 課程與影片：上架流程、YouTube 或 Stream 上傳、講義區塊、檢查站、Lab |
 | `/admin/challenges` | 題庫：flag（存檔只留 SHA-256）、提示、附件、Docker 環境、排程上線 |
 | `/admin/events` | 活動與報名 |
-| `/admin/instructors` | 講師：邀請、專長、經歷、綁定 Discord 帳號 |
-| `/admin/users` | 學員與角色（學員 / 助教 / 講師 / 管理員）、停權、個人詳情與 XP 調整 |
+| `/admin/instructors` | 講師：邀請、專長、經歷、綁定登入帳號 |
+| `/admin/users` | 學員與角色（學員 / 助教 / 講師 / 管理員）、停權、重設密碼、個人詳情與 XP 調整 |
 | `/admin/questions` | 問答回覆與採納 |
 | `/admin/instances` | 靶機環境：運行中的容器、到期倒數、關閉 |
 | `/admin/analytics` | 數據：12 週趨勢、學習漏斗、完課率、解題率、18 校參與 |
@@ -115,7 +115,7 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 ## 登入與進度
 
 - 訪客不用登入就能看課、答檢查站、在瀏覽器比對 flag，進度存在這台瀏覽器。
-- 登入（正式站用 Discord）後，伺服器是唯一的真相：每個動作打 API，`GET /api/me` 回填 store。訪客時期的檢查站、看課進度、筆記會在第一次登入時合併到帳號。
+- 登入（帳號密碼，可選 Discord）後，伺服器是唯一的真相：每個動作打 API，`GET /api/me` 回填 store。訪客時期的檢查站、看課進度、筆記會在第一次登入時合併到帳號。
 - 只有登入後的解題會進排行榜、First Blood 與 Discord 通知。
 
 ## Flag 驗證
