@@ -156,7 +156,8 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 - `settings.weekly`（題目 slug、說明文字、前三名加分 XP），後台「設定與整合 → 本週挑戰」可改；slug 留空整個區塊就不出現。
 - `getWeeklyChallenge()` 依 `leaderboard.weekStartsOn` 算本週區間，名次照「這一週第一次解出」的時間排，所以上週就解掉的人不佔名額。首頁與題庫頁置頂顯示。
 - `settleWeeklyChallenge()` 發前三名加分並貼 Discord 戰報。加分寫進 `xp_ledger`，label 帶週起日，同一週重複觸發不會重複發。
-- 觸發方式有兩個：後台「結算本週並公告」按鈕，或 `.github/workflows/weekly-settle.yml` 每週日 22:00（台北）打 `POST /api/admin/weekly/settle`。跟備份一樣用 `Authorization: Bearer $BACKUP_TOKEN` 認證，因為 Action 沒辦法做 Discord 登入。
+- 觸發方式有兩個：後台「結算本週並公告」按鈕，或 `.github/workflows/weekly-settle.yml` 定時打 `POST /api/admin/weekly/settle`。跟備份一樣用 `Authorization: Bearer $BACKUP_TOKEN` 認證，因為 Action 沒辦法做 Discord 登入。
+- cron 排在週六 23:00 UTC，也就是台北週日 07:00。`weekStart()` 用伺服器本地時間，Vercel 是 UTC，所以 `weekStartsOn = 0` 的週界線在週日 00:00 UTC；排在界線前一小時才會收到整週，排在之後會結算到剛開始的下一週。改 `weekStartsOn` 要記得一起改 cron。
 
 驗收：後台指定一題 → 首頁與 `/challenges` 置頂出現該題 → 按「結算本週並公告」看 toast 與 Discord。
 

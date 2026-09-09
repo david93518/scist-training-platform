@@ -3,9 +3,13 @@ name: 每週挑戰結算
 # 發本週挑戰前三名的加分，並把戰報貼到 Discord。
 # 後台「設定與整合 → 本週挑戰」也有同一個按鈕，這裡只是省得有人忘記按。
 # 重複觸發不會重複發分，所以手動重跑是安全的。
+# 時間點要落在「正在結算的那一週」之內。預設 leaderboard.weekStartsOn = 0，
+# 而 weekStart() 用伺服器本地時間，Vercel 是 UTC，所以週界線在週日 00:00 UTC
+# （台北週日早上 08:00）。這裡排在界線前一小時，剛好收掉整週。
+# 改 weekStartsOn 的話這條 cron 也要跟著改。
 on:
   schedule:
-    - cron: "0 14 * * 0" # 每週日 22:00 台北時間
+    - cron: "0 23 * * 6" # 週六 23:00 UTC = 台北週日 07:00
   workflow_dispatch:
 
 jobs:

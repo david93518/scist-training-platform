@@ -239,7 +239,9 @@ workflow 每週匯出一次全站 JSON，驗證檔案格式後保存 90 天，�
 
 ### 每週挑戰結算
 
-`.github/workflows/weekly-settle.yml` 每週日 22:00（台北）呼叫 `POST /api/admin/weekly/settle`，發出本週挑戰前三名的加分並把戰報貼到 Discord。使用與備份相同的 `BACKUP_TOKEN`，設定好備份即可運作。同一週重複觸發不會重複發分，後台「設定與整合 → 本週挑戰」也有同一顆按鈕。
+`.github/workflows/weekly-settle.yml` 在台北時間週日 07:00 呼叫 `POST /api/admin/weekly/settle`，發出本週挑戰前三名的加分並把戰報貼到 Discord。使用與備份相同的 `BACKUP_TOKEN`，設定好備份即可運作。同一週重複觸發不會重複發分，後台「設定與整合 → 本週挑戰」也有同一顆按鈕。
+
+時間點是刻意排在週界線之前的：`weekStartsOn` 預設為 0，而週起算用伺服器本地時間（Vercel 為 UTC），界線落在週日 00:00 UTC。若調整 `weekStartsOn`，workflow 的 cron 需一併調整。
 
 ## 文件
 
