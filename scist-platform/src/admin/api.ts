@@ -438,7 +438,7 @@ export const localApi: AdminApi = {
       log("xp", "user", id, u.handle + " " + (delta > 0 ? "+" : "") + delta + " XP · " + reason);
       return xp;
     },
-    async setPassword(id, _password) {
+    async setPassword(id) {
       const s = store();
       const u = s.users.find((x) => x.id === id);
       s.set("users", s.users.map((x) => (x.id === id ? { ...x, hasPassword: true } : x)));
