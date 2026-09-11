@@ -3,11 +3,15 @@
 /**
  * Learner state.
  *
- * Guests keep everything in this browser (localStorage). Once signed in, the
- * server is the source of truth: the store is hydrated from GET /api/me and
- * every action is mirrored to the API, with the local copy acting as an
- * optimistic cache. Guest progress made before signing in is replayed to the
- * account on the first hydration.
+ * Everything here belongs to a signed-in account. The server is the source of
+ * truth: the store is hydrated from GET /api/me and every action is mirrored
+ * to the API, with the local copy acting as an optimistic cache so the header
+ * and dashboard do not flash empty on reload.
+ *
+ * A visitor without a session gets the empty initial state and none of the
+ * recording actions do anything. The pages that need progress (lesson
+ * player, challenge page, dashboard) are gated server-side in src/proxy.ts;
+ * the guards here only cover an expired or revoked session mid-page.
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -15,15 +19,6 @@ import { api } from "@/lib/api";
 export { useHydrated } from "@/lib/use-now";
 
 export type LessonKey = string; // "track-slug/lesson-slug"
-
-export interface PostedQuestion {
-  id: string;
-  scope: "lesson" | "challenge";
-  refId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-}
 
 export interface ActivityEntry {
   id: string;
@@ -60,7 +55,7 @@ export interface ServerProfile {
 }
 
 interface ProgressState {
-  /** true once GET /api/me confirmed a session; false for guests */
+  /** true once GET /api/me confirmed a session; false for visitors */
   authenticated: boolean;
   userId: string | null;
   /** set after the first /api/me round trip of this page load (not persisted) */
@@ -89,13 +84,12 @@ interface ProgressState {
   instances: Record<string, InstanceInfo>;
 
   registeredEvents: string[];
-  askedQuestions: PostedQuestion[];
   log: ActivityEntry[];
 
   hydrateFromServer: (profile: ServerProfile) => void;
   markGuest: () => void;
   logout: () => Promise<void>;
-  /** guest-only local identity (and the admin console's local mode) */
+  /** admin console local mode only (NEXT_PUBLIC_ADMIN_API=local): a browser-side identity for /admin?as=… */
   setProfile: (handle: string, schoolId: string, role?: Role) => void;
 
   setWatched: (key: LessonKey, value: number) => void;
@@ -108,10 +102,6 @@ interface ProgressState {
   killInstance: (slug: string) => void;
   toggleEvent: (id: string) => void;
   dismissBanned: () => void;
-  askQuestion: (q: Omit<PostedQuestion, "id" | "createdAt">) => void;
-  editQuestion: (id: string, patch: { title: string; body: string }) => void;
-  removeQuestion: (id: string) => void;
-  reset: () => void;
 }
 
 const initial = {
@@ -132,7 +122,6 @@ const initial = {
   revealedHints: {} as Record<string, string[]>,
   instances: {} as Record<string, InstanceInfo>,
   registeredEvents: [] as string[],
-  askedQuestions: [] as PostedQuestion[],
   log: [] as ActivityEntry[],
   banned: false,
 };
@@ -157,20 +146,6 @@ function later(key: string, ms: number, fn: () => void) {
 function split(key: LessonKey) {
   const i = key.indexOf("/");
   return { track: key.slice(0, i), lesson: key.slice(i + 1) };
-}
-
-/**
- * settings.features.guestProgress. Zustand lives outside React, so the value
- * is pushed in from <ProgressSync> rather than read from context. When it is
- * off, nothing a signed-out visitor does is written down.
- */
-let guestProgress = true;
-export function setGuestProgressEnabled(on: boolean) {
-  guestProgress = on;
-}
-/** true when this change may be recorded locally */
-function mayRecord(authenticated: boolean) {
-  return authenticated || guestProgress;
 }
 
 let lastRefresh = 0;
@@ -205,27 +180,6 @@ function mirror(action: () => Promise<unknown>) {
     .catch((e) => console.warn("[progress] sync failed", e));
 }
 
-type GuestSnapshot = Pick<ProgressState, "watched" | "checkpoints" | "completedLessons" | "notes">;
-
-function hasGuestProgress(s: GuestSnapshot) {
-  return (
-    Object.values(s.watched).some((v) => v > 0) ||
-    Object.values(s.checkpoints).some((a) => a.length > 0) ||
-    s.completedLessons.length > 0 ||
-    Object.values(s.notes).some((n) => n.trim().length > 0)
-  );
-}
-
-/** Replays what a guest did in this browser onto the account they just signed in to. */
-async function mergeGuestProgress(snap: GuestSnapshot) {
-  const post = (body: Record<string, unknown>) => api("/api/progress", { body }).catch(() => undefined);
-  for (const [key, value] of Object.entries(snap.watched)) if (value > 0) await post({ action: "watched", ...split(key), value });
-  for (const [key, indices] of Object.entries(snap.checkpoints)) for (const index of indices) await post({ action: "checkpoint", ...split(key), index });
-  for (const key of snap.completedLessons) await post({ action: "complete", ...split(key) });
-  for (const [key, note] of Object.entries(snap.notes)) if (note.trim()) await post({ action: "note", ...split(key), note });
-  await refreshProfile(true);
-}
-
 /* ------------------------------ store ------------------------------ */
 export const useProgress = create<ProgressState>()(
   persist(
@@ -234,9 +188,7 @@ export const useProgress = create<ProgressState>()(
       sessionChecked: false,
       banned: false,
 
-      hydrateFromServer: (p) => {
-        const s = get();
-        const snapshot = !s.authenticated && hasGuestProgress(s) ? { watched: s.watched, checkpoints: s.checkpoints, completedLessons: s.completedLessons, notes: s.notes } : null;
+      hydrateFromServer: (p) =>
         set({
           authenticated: true,
           sessionChecked: true,
@@ -258,13 +210,10 @@ export const useProgress = create<ProgressState>()(
           instances: p.instances ?? {},
           registeredEvents: p.registeredEvents ?? [],
           log: p.log ?? [],
-          askedQuestions: [],
-        });
-        if (snapshot) void mergeGuestProgress(snapshot);
-      },
+        }),
 
-      markGuest: () =>
-        set((s) => (s.authenticated ? { ...initial, sessionChecked: true } : { sessionChecked: true, authenticated: false, userId: null })),
+      /** No session: nothing of a previous account may linger in this browser. */
+      markGuest: () => set({ ...initial, sessionChecked: true }),
 
       dismissBanned: () => set({ banned: false }),
 
@@ -276,28 +225,26 @@ export const useProgress = create<ProgressState>()(
       setProfile: (handle, schoolId, role) => set((s) => ({ handle, displayName: s.displayName || handle, schoolId, role: role ?? s.role })),
 
       setWatched: (key, value) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         set((s) => ({ watched: { ...s.watched, [key]: Math.max(s.watched[key] ?? 0, value) } }));
-        if (get().authenticated) {
-          later("watched:" + key, 1500, () => {
-            void api("/api/progress", { body: { action: "watched", ...split(key), value: get().watched[key] ?? value } }).catch(() => undefined);
-          });
-        }
+        later("watched:" + key, 1500, () => {
+          void api("/api/progress", { body: { action: "watched", ...split(key), value: get().watched[key] ?? value } }).catch(() => undefined);
+        });
       },
 
       completeLesson: (key, xp, title) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         if (get().completedLessons.includes(key)) return;
         set((s) => ({
           completedLessons: [...s.completedLessons, key],
           xp: s.xp + xp,
           log: [entry("lesson", "完成課程 " + title, xp), ...s.log].slice(0, 60),
         }));
-        if (get().authenticated) mirror(() => api("/api/progress", { body: { action: "complete", ...split(key) } }));
+        mirror(() => api("/api/progress", { body: { action: "complete", ...split(key) } }));
       },
 
       answerCheckpoint: (key, index, xp) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         const done = get().checkpoints[key] ?? [];
         if (done.includes(index)) return;
         set((s) => ({
@@ -305,23 +252,21 @@ export const useProgress = create<ProgressState>()(
           xp: s.xp + xp,
           log: [entry("checkpoint", "答對知識點檢查站", xp), ...s.log].slice(0, 60),
         }));
-        if (get().authenticated) mirror(() => api("/api/progress", { body: { action: "checkpoint", ...split(key), index } }));
+        mirror(() => api("/api/progress", { body: { action: "checkpoint", ...split(key), index } }));
       },
 
       setNote: (key, note) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         set((s) => ({ notes: { ...s.notes, [key]: note } }));
-        if (get().authenticated) {
-          later("note:" + key, 1000, () => {
-            void api("/api/progress", { body: { action: "note", ...split(key), note: get().notes[key] ?? "" } }).catch(() => undefined);
-          });
-        }
+        later("note:" + key, 1000, () => {
+          void api("/api/progress", { body: { action: "note", ...split(key), note: get().notes[key] ?? "" } }).catch(() => undefined);
+        });
       },
 
       // the API call for flags / hints / instances / events happens in the
       // component (it needs the server's answer); these only update the cache
       solveFlag: (slug, flagId, xp, name) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         const cur = get().solved[slug] ?? [];
         if (cur.includes(flagId)) return;
         set((s) => ({
@@ -332,7 +277,7 @@ export const useProgress = create<ProgressState>()(
       },
 
       revealHint: (slug, hintId, cost) => {
-        if (!mayRecord(get().authenticated)) return;
+        if (!get().authenticated) return;
         const cur = get().revealedHints[slug] ?? [];
         if (cur.includes(hintId)) return;
         set((s) => ({
@@ -342,7 +287,10 @@ export const useProgress = create<ProgressState>()(
         }));
       },
 
-      spawnInstance: (slug, info) => set((s) => ({ instances: { ...s.instances, [slug]: { startedAt: Date.now(), ...info } } })),
+      spawnInstance: (slug, info) => {
+        if (!get().authenticated) return;
+        set((s) => ({ instances: { ...s.instances, [slug]: { startedAt: Date.now(), ...info } } }));
+      },
 
       killInstance: (slug) =>
         set((s) => {
@@ -351,35 +299,26 @@ export const useProgress = create<ProgressState>()(
           return { instances: next };
         }),
 
-      toggleEvent: (id) =>
+      toggleEvent: (id) => {
+        if (!get().authenticated) return;
         set((s) => ({
           registeredEvents: s.registeredEvents.includes(id) ? s.registeredEvents.filter((e) => e !== id) : [...s.registeredEvents, id],
-        })),
-
-      askQuestion: (q) =>
-        set((s) => ({
-          askedQuestions: [{ ...q, id: "local-" + Date.now(), createdAt: new Date().toISOString() }, ...s.askedQuestions],
-        })),
-
-      /** 還沒登入時發的問題只存在這台瀏覽器，改跟刪都在本機做完 */
-      editQuestion: (id, patch) =>
-        set((s) => ({ askedQuestions: s.askedQuestions.map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
-
-      removeQuestion: (id) => set((s) => ({ askedQuestions: s.askedQuestions.filter((q) => q.id !== id) })),
-
-      reset: () => set({ ...initial, sessionChecked: get().sessionChecked }),
+        }));
+      },
     }),
     {
       name: "scist-gate-progress",
-      version: 2,
-      partialize: (s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== "sessionChecked" && k !== "banned")) as ProgressState,
+      // v3: visitors no longer keep progress in the browser, so a signed-out
+      // store persists nothing but the flag itself
+      version: 3,
+      partialize: (s) =>
+        (s.authenticated
+          ? Object.fromEntries(Object.entries(s).filter(([k]) => k !== "sessionChecked" && k !== "banned"))
+          : { authenticated: false, userId: null }) as ProgressState,
       migrate: (persisted, version) => {
-        const p = (persisted ?? {}) as Partial<ProgressState> & { instances?: Record<string, number | InstanceInfo> };
-        if (version < 2) {
-          const instances: Record<string, InstanceInfo> = {};
-          for (const [slug, v] of Object.entries(p.instances ?? {})) instances[slug] = typeof v === "number" ? { startedAt: v } : v;
-          return { ...p, instances, authenticated: false, userId: null } as ProgressState;
-        }
+        const p = (persisted ?? {}) as Partial<ProgressState>;
+        // anything a visitor accumulated before v3 is dropped; a signed-in cache is kept as-is
+        if (version < 3) return (p.authenticated ? p : { authenticated: false, userId: null }) as ProgressState;
         return p as ProgressState;
       },
     },

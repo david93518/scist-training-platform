@@ -23,10 +23,13 @@ export function LessonRow({
   const done = useProgress((s) => s.completedLessons.includes(key));
   const watched = useProgress((s) => s.watched[key] ?? 0);
   const answered = useProgress((s) => s.checkpoints[key]?.length ?? 0);
+  const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
 
-  const isDone = hydrated && done;
-  const pos = hydrated ? watched : 0;
+  // progress belongs to the account: visitors get a plain row
+  const showProgress = hydrated && authenticated;
+  const isDone = showProgress && done;
+  const pos = showProgress ? watched : 0;
 
   return (
     <Link
@@ -64,7 +67,7 @@ export function LessonRow({
           </span>
           <span className="flex items-center gap-1">
             <ListChecks size={11} />
-            {hydrated ? answered : 0}/{lesson.checkpoints.length} 檢查站
+            {showProgress ? answered + "/" + lesson.checkpoints.length : lesson.checkpoints.length} 檢查站
           </span>
           <span className="flex items-center gap-1 text-accent">
             <Zap size={11} />+{lesson.xp} XP

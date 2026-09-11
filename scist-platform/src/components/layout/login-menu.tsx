@@ -49,6 +49,19 @@ function clearIntentFromUrl() {
   window.history.replaceState(window.history.state, "", url.pathname + (url.search || "") + url.hash);
 }
 
+const LOGIN_EVENT = "scist:login";
+
+/**
+ * Opens the login dialog from anywhere in the app (a gated button, the
+ * LoginWall). `next` is the same-origin path to land on after signing in;
+ * the header's LoginMenu listens and owns the dialog.
+ */
+export function requestLogin(next?: string | null, reason: string | null = null) {
+  if (typeof window === "undefined") return;
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  window.dispatchEvent(new CustomEvent(LOGIN_EVENT, { detail: { next: safeNext, reason } }));
+}
+
 function IconDiscord({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -163,6 +176,15 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
                     </a>
                   </>
                 ) : null}
+              </p>
+            </div>
+          ) : null}
+
+          {!forAdmin && !forBanned && next && !authenticated ? (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+              <Lock size={15} className="mt-0.5 shrink-0 text-accent" />
+              <p className="text-[13px] leading-relaxed text-fg-2">
+                看課、解題、累積 XP 都要先登入。登入後會直接帶你回 <span className="font-mono text-fg">{next}</span>。
               </p>
             </div>
           ) : null}
@@ -336,6 +358,16 @@ export function LoginMenu() {
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
   const canAdmin = can(role, "admin.enter");
+
+  // requestLogin() from any component opens the dialog with a destination
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      const d = (e as CustomEvent<{ next: string | null; reason: string | null }>).detail;
+      setIntent({ open: true, reason: d.reason ?? (d.next?.startsWith("/admin") ? "admin" : null), next: d.next });
+    };
+    window.addEventListener(LOGIN_EVENT, onRequest);
+    return () => window.removeEventListener(LOGIN_EVENT, onRequest);
+  }, []);
 
   const close = () => {
     setIntent({ open: false, reason: null, next: null });

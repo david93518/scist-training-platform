@@ -117,8 +117,8 @@ export function buildSeed(): AdminData {
     rating: c.rating,
     status: "published",
     releasedAt: c.releasedAt,
-    flags: c.flags.map((f) => ({ id: c.id + "-" + f.id, flagId: f.id, label: f.label, sha256: f.sha256, points: f.points })),
-    hints: c.hints.map((h) => ({ id: c.id + "-" + h.id, text: h.text, cost: h.cost })),
+    flags: c.flags.map((f) => ({ id: c.id + "-" + f.id, flagId: f.id, label: f.label, sha256: f.sha256 ?? "", points: f.points })),
+    hints: c.hints.map((h) => ({ id: c.id + "-" + h.id, text: h.text ?? "", cost: h.cost })),
     files: (c.files ?? []).map((name) => ({ id: nanoid(8), name, size: null, objectKey: null, status: "listed" as const })),
     updatedAt: now,
   }));

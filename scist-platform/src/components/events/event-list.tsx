@@ -8,17 +8,26 @@ import { Button, ProgressBar } from "@/components/ui/primitives";
 import { EVENT_META, type SciEvent } from "@/data/events";
 import type { Instructor } from "@/data/instructors";
 import { api } from "@/lib/api";
+import { requestLogin } from "@/components/layout/login-menu";
 import { useProgress, useHydrated } from "@/store/progress";
 import { cn, formatDateTime } from "@/lib/utils";
 
+/**
+ * Public event cards. Anyone can browse; registering needs an account, so a
+ * visitor's button opens the login dialog and comes back here afterwards.
+ */
 export function EventList({ events, instructors }: { events: SciEvent[]; instructors: Instructor[] }) {
   const registered = useProgress((s) => s.registeredEvents);
   const toggle = useProgress((s) => s.toggleEvent);
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const hydrated = useHydrated();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // only after /api/me answered, so a signed-in user in a fresh browser doesn't flash 登入後報名
+  const visitor = hydrated && sessionChecked && !authenticated;
 
   const sorted = [...events].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -27,7 +36,7 @@ export function EventList({ events, instructors }: { events: SciEvent[]; instruc
   const change = async (e: SciEvent, joined: boolean) => {
     setError(null);
     if (!authenticated) {
-      toggle(e.id);
+      requestLogin("/community");
       return;
     }
     setBusy(e.id);
@@ -53,9 +62,9 @@ export function EventList({ events, instructors }: { events: SciEvent[]; instruc
       {sorted.map((e, i) => {
         const meta = EVENT_META[e.type];
         const host = instructors.find((x) => x.id === e.hostId);
-        const joined = hydrated && registered.includes(e.id);
-        // signed-in registrations are already in the server count
-        const seats = e.registered + (joined && !authenticated ? 1 : 0);
+        const joined = hydrated && authenticated && registered.includes(e.id);
+        const seats = e.registered;
+        const full = seats >= e.capacity;
         return (
           <div
             key={e.id}
@@ -136,17 +145,16 @@ export function EventList({ events, instructors }: { events: SciEvent[]; instruc
               <Button
                 variant={joined ? "outline" : "primary"}
                 size="sm"
-                disabled={busy === e.id || (!joined && seats >= e.capacity)}
+                disabled={busy === e.id || (!joined && full)}
                 onClick={() => change(e, joined)}
               >
                 {busy === e.id ? <Loader2 size={13} className="animate-spin" /> : null}
-                {joined ? "取消報名" : seats >= e.capacity ? "已額滿" : "我要報名"}
+                {joined ? "取消報名" : full ? "已額滿" : visitor ? "登入後報名" : "我要報名"}
               </Button>
             </div>
           </div>
         );
       })}
-      {hydrated && !authenticated ? <p className="font-mono text-[11.5px] text-fg-3">未登入的報名只記在這台瀏覽器。登入後報名才會佔到名額。</p> : null}
     </div>
   );
 }

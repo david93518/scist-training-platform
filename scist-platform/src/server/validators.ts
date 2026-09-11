@@ -161,7 +161,7 @@ export const settingsSchema = z.object({
   xp: z.object({ checkpointDefault: z.number().int().min(0), lessonDefault: z.number().int().min(0), hintRefundOnSolve: z.boolean() }),
   leaderboard: z.object({ weekStartsOn: z.number().int().min(0).max(6) }),
   weekly: z.object({ slug: z.union([slug, z.literal("")]), note: z.string().max(300), bonusXp: z.number().int().min(0).max(5000) }),
-  features: z.object({ guestProgress: z.boolean(), instances: z.boolean(), questions: z.boolean() }),
+  features: z.object({ instances: z.boolean(), questions: z.boolean() }),
 });
 
 export const progressSchema = z.discriminatedUnion("action", [

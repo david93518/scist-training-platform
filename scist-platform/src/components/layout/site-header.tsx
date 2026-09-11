@@ -34,6 +34,7 @@ export function SiteHeader() {
     () => false,
   );
   const xp = useProgress((s) => s.xp);
+  const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
@@ -80,20 +81,21 @@ export function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2.5">
-          <Link
-            href="/dashboard"
-            className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-2 pr-3 transition-colors hover:border-accent/50 hover:bg-accent/[0.06] lg:flex"
-          >
-            <span className="clip-hex grid h-6 w-6 place-items-center bg-accent/20">
-              <Zap size={12} className="text-accent" />
-            </span>
-            <span className="font-mono text-[13px] font-bold tabular-nums text-fg">
-              {hydrated ? formatNumber(xp) : "0"}
-            </span>
-            <span className="text-[11.5px] font-bold" style={{ color: rank.color }}>
-              {hydrated ? rank.name : ranks[0]?.name}
-            </span>
-          </Link>
+          {/* XP and rank belong to an account; a visitor only sees the login button */}
+          {hydrated && authenticated ? (
+            <Link
+              href="/dashboard"
+              className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-2 pr-3 transition-colors hover:border-accent/50 hover:bg-accent/[0.06] lg:flex"
+            >
+              <span className="clip-hex grid h-6 w-6 place-items-center bg-accent/20">
+                <Zap size={12} className="text-accent" />
+              </span>
+              <span className="font-mono text-[13px] font-bold tabular-nums text-fg">{formatNumber(xp)}</span>
+              <span className="text-[11.5px] font-bold" style={{ color: rank.color }}>
+                {rank.name}
+              </span>
+            </Link>
+          ) : null}
 
           <LoginMenu />
 
@@ -127,13 +129,15 @@ export function SiteHeader() {
                 <ChevronRight size={16} className="text-fg-3" />
               </Link>
             ))}
-            <Link
-              href="/dashboard"
-              onClick={() => setOpen(false)}
-              className={buttonClass("outline", "md", "mt-2")}
-            >
-              我的進度
-            </Link>
+            {hydrated && authenticated ? (
+              <Link
+                href="/dashboard"
+                onClick={() => setOpen(false)}
+                className={buttonClass("outline", "md", "mt-2")}
+              >
+                我的進度
+              </Link>
+            ) : null}
           </nav>
         </div>
       ) : null}

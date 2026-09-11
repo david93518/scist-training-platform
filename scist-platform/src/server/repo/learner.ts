@@ -283,6 +283,22 @@ export async function unlockHint(userId: string, slug: string, hintId: string) {
   return { text: hint.text, cost: hint.cost };
 }
 
+/**
+ * Text of the hints this learner has already paid for on one challenge. The
+ * public challenge data carries no hint text, so the page asks for it here.
+ */
+export async function listUnlockedHints(userId: string, slug: string) {
+  const db = await getDb();
+  const ch = await db.query.challenges.findFirst({ where: eq(schema.challenges.slug, slug) });
+  if (!ch) throw new ApiError(404, "challenge not found");
+  const rows = await db
+    .select({ id: schema.challengeHints.id, text: schema.challengeHints.text })
+    .from(schema.hintUnlocks)
+    .innerJoin(schema.challengeHints, eq(schema.challengeHints.id, schema.hintUnlocks.hintId))
+    .where(and(eq(schema.hintUnlocks.userId, userId), eq(schema.challengeHints.challengeId, ch.id)));
+  return { hints: rows };
+}
+
 /* ------------------------------ instances ------------------------------ */
 export async function spawnInstance(userId: string, slug: string) {
   const db = await getDb();

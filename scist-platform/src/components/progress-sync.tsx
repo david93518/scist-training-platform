@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { refreshProfile, setGuestProgressEnabled } from "@/store/progress";
-import { useFeatures } from "@/components/settings-provider";
+import { refreshProfile } from "@/store/progress";
 
 /**
  * Keeps the learner store in step with the session cookie: one GET /api/me on
- * load, another whenever the tab comes back into view. Also hands the store
- * the guest-progress toggle, which it cannot read from React context itself.
+ * load, another whenever the tab comes back into view.
  */
 export function ProgressSync() {
-  const guestProgress = useFeatures().guestProgress;
-
-  useEffect(() => {
-    setGuestProgressEnabled(guestProgress);
-  }, [guestProgress]);
-
   useEffect(() => {
     void refreshProfile(true);
     const onVisible = () => {

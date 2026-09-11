@@ -186,7 +186,7 @@ export interface AdminSettings {
   leaderboard: { weekStartsOn: number };
   /** 本週指定挑戰；slug 留空就整個功能不出現 */
   weekly: { slug: string; note: string; bonusXp: number };
-  features: { guestProgress: boolean; instances: boolean; questions: boolean };
+  features: { instances: boolean; questions: boolean };
 }
 
 export interface IntegrationStatus {

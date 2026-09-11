@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { can } from "@/lib/permissions";
 import { useProgress, useHydrated } from "@/store/progress";
 import { useFeatures } from "@/components/settings-provider";
+import { requestLogin } from "@/components/layout/login-menu";
 import { useNow } from "@/lib/use-now";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -17,7 +18,7 @@ const ROLE_STYLE: Record<string, string> = {
   學員: "text-fg-3 border-line bg-bg-3",
 };
 
-/** Vote pill. Read-only for guests and for locally-stored guest questions. */
+/** Vote pill. Read-only until the reader is signed in. */
 function VoteButton({
   votes,
   voted,
@@ -156,6 +157,7 @@ function Thread({
   now,
   role,
   authenticated,
+  visitor,
   questionsOpen,
   onChanged,
 }: {
@@ -163,6 +165,8 @@ function Thread({
   now?: number;
   role: string;
   authenticated: boolean;
+  /** session checked and nobody is signed in — show the login nudge instead of nothing */
+  visitor: boolean;
   questionsOpen: boolean;
   onChanged: () => void;
 }) {
@@ -174,11 +178,6 @@ function Thread({
   /** 目前按了一次刪除、等第二次確認的對象："q" 或回覆 id */
   const [armed, setArmed] = useState<string | null>(null);
   const [reply, setReply] = useState("");
-
-  const editLocal = useProgress((s) => s.editQuestion);
-  const removeLocal = useProgress((s) => s.removeQuestion);
-
-  const local = q.id.startsWith("local-");
 
   const act = async (fn: () => Promise<unknown> | unknown, done?: () => void) => {
     if (busy) return;
@@ -202,12 +201,13 @@ function Thread({
   const accept = (answerId: string | null) =>
     act(() => api("/api/questions/" + q.id, { method: "PATCH", body: { acceptedAnswerId: answerId } }));
 
-  const votable = authenticated && !local;
+  const votable = authenticated;
   // 回覆權限跟後台問答頁同一張表：助教以上不受「暫停發問」影響，也不會被限流
   const staff = can(role, "questions.answer");
   const mayModerate = can(role, "questions.delete");
-  const mayReply = authenticated && !local && (questionsOpen || staff);
-  const mayAccept = (q.mine || staff) && !local;
+  const mayReply = authenticated && (questionsOpen || staff);
+  // q.mine 只會在登入時由伺服器帶回來
+  const mayAccept = Boolean(q.mine) || staff;
   // 已經有別人回覆就不讓作者整串刪掉，會把別人寫的東西一起帶走
   const mayDeleteThread = mayModerate || (Boolean(q.mine) && q.answers.every((a) => a.mine));
 
@@ -219,15 +219,11 @@ function Thread({
 
   const saveQuestion = (next: { title?: string; body: string }) =>
     act(
-      () =>
-        local
-          ? editLocal(q.id, { title: next.title ?? q.title, body: next.body })
-          : api("/api/questions/" + q.id, { method: "PATCH", body: { title: next.title, body: next.body } }),
+      () => api("/api/questions/" + q.id, { method: "PATCH", body: { title: next.title, body: next.body } }),
       () => setEditing(false),
     );
 
-  const deleteThread = () =>
-    act(() => (local ? removeLocal(q.id) : api("/api/questions/" + q.id, { method: "DELETE" })));
+  const deleteThread = () => act(() => api("/api/questions/" + q.id, { method: "DELETE" }));
 
   const saveAnswer = (a: Answer, body: string) =>
     act(() => api("/api/questions/" + q.id + "/answers/" + a.id, { method: "PATCH", body: { body } }), () => setEditingAnswer(null));
@@ -364,9 +360,16 @@ function Thread({
                 </Button>
               </div>
             </div>
-          ) : authenticated || local ? null : (
-            <p className="font-mono text-[10.5px] text-fg-3">登入後才能回覆這個討論</p>
-          )}
+          ) : visitor ? (
+            <button
+              type="button"
+              onClick={() => requestLogin(window.location.pathname)}
+              className="flex items-center gap-1.5 self-start font-mono text-[10.5px] text-fg-3 transition-colors hover:text-fg-2"
+            >
+              <Lock size={10} />
+              登入後才能回覆這個討論
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -376,9 +379,10 @@ function Thread({
 }
 
 /**
- * Threads for a lesson or a challenge, read from GET /api/questions. Signed-in
- * learners post through the API (and on to Discord); guests keep their
- * questions in this browser only. Turning off settings.features.questions
+ * Threads for a lesson or a challenge, read from GET /api/questions. Anyone
+ * can read; posting, replying, voting and accepting need a signed-in account
+ * (questions go through the API and on to Discord). A visitor sees a login
+ * nudge where the composer would be. Turning off settings.features.questions
  * leaves the threads readable but takes the composer away — 助教以上不受影響，
  * 因為他們本來就要在前台回覆。
  */
@@ -391,13 +395,13 @@ export function QaPanel({
   refId: string;
   compact?: boolean;
 }) {
-  const asked = useProgress((s) => s.askedQuestions);
-  const ask = useProgress((s) => s.askQuestion);
-  const handle = useProgress((s) => s.handle);
   const role = useProgress((s) => s.role);
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const hydrated = useHydrated();
   const questionsOpen = useFeatures().questions;
+  // only after /api/me answered, so a signed-in user in a fresh browser doesn't flash the login row
+  const visitor = hydrated && sessionChecked && !authenticated;
 
   const [remote, setRemote] = useState<Question[] | null>(null);
   const [tick, setTick] = useState(0);
@@ -417,44 +421,28 @@ export function QaPanel({
     };
   }, [scope, refId, tick]);
 
-  const mine: Question[] = hydrated && !authenticated
-    ? asked
-        .filter((q) => q.scope === scope && q.refId === refId)
-        .map((q) => ({
-          id: q.id,
-          scope: q.scope,
-          refId: q.refId,
-          title: q.title,
-          body: q.body,
-          author: handle,
-          createdAt: q.createdAt,
-          votes: 0,
-          answers: [],
-          mine: true,
-        }))
-    : [];
-
-  const all = [...mine, ...(remote ?? [])];
+  const all = remote ?? [];
   const now = useNow(60_000);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || busy) return;
-    setError(null);
-    if (authenticated) {
-      setBusy(true);
-      try {
-        await api("/api/questions", { body: { scope, refId, title: title.trim(), body: body.trim() } });
-        setTick((t) => t + 1);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "送出失敗");
-        setBusy(false);
-        return;
-      }
-      setBusy(false);
-    } else {
-      ask({ scope, refId, title: title.trim(), body: body.trim() });
+    if (!authenticated) {
+      // the session went away while the form was open
+      requestLogin(window.location.pathname);
+      return;
     }
+    setError(null);
+    setBusy(true);
+    try {
+      await api("/api/questions", { body: { scope, refId, title: title.trim(), body: body.trim() } });
+      setTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "送出失敗");
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
     setTitle("");
     setBody("");
     setSent(true);
@@ -463,7 +451,22 @@ export function QaPanel({
 
   return (
     <div className={compact ? "" : "card p-5"}>
-      {questionsOpen ? (
+      {!questionsOpen ? (
+        <div className="flex items-center gap-2.5 rounded-xl border border-line bg-bg-3/40 px-3.5 py-3">
+          <Lock size={14} className="shrink-0 text-fg-3" />
+          <p className="text-[12.5px] leading-relaxed text-fg-3">
+            目前沒有開放發問，下面的討論還是可以看。急的話直接到 Discord 找助教。
+          </p>
+        </div>
+      ) : visitor ? (
+        <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-line bg-bg-3/40 px-3.5 py-3">
+          <Lock size={14} className="shrink-0 text-fg-3" />
+          <p className="flex-1 text-[12.5px] leading-relaxed text-fg-3">登入後才能發問，討論還是可以看。</p>
+          <Button type="button" size="sm" onClick={() => requestLogin(window.location.pathname)}>
+            登入 / 註冊
+          </Button>
+        </div>
+      ) : (
         <form onSubmit={submit} className="rounded-xl border border-line bg-bg-3/40 p-3.5">
           <input
             value={title}
@@ -480,13 +483,7 @@ export function QaPanel({
           />
           <div className="mt-2 flex items-center justify-between border-t border-line pt-2.5">
             <span className="font-mono text-[11px] text-fg-3">
-              {sent ? (
-                <span className="text-accent">{authenticated ? "已送出，同步到 Discord 頻道" : "已記在這台瀏覽器"}</span>
-              ) : authenticated ? (
-                "問題會同步到 Discord，助教與講師都看得到"
-              ) : (
-                "未登入的問題只存在這台瀏覽器，登入後才會送到助教那邊"
-              )}
+              {sent ? <span className="text-accent">已送出，同步到 Discord 頻道</span> : "問題會同步到 Discord，助教與講師都看得到"}
             </span>
             <Button type="submit" size="sm" disabled={!title.trim() || busy}>
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
@@ -495,13 +492,6 @@ export function QaPanel({
           </div>
           {error ? <p className="mt-2 text-[12px] text-red">{error}</p> : null}
         </form>
-      ) : (
-        <div className="flex items-center gap-2.5 rounded-xl border border-line bg-bg-3/40 px-3.5 py-3">
-          <Lock size={14} className="shrink-0 text-fg-3" />
-          <p className="text-[12.5px] leading-relaxed text-fg-3">
-            目前沒有開放發問，下面的討論還是可以看。急的話直接到 Discord 找助教。
-          </p>
-        </div>
       )}
 
       <div className="mt-4 flex items-center gap-2">
@@ -528,6 +518,7 @@ export function QaPanel({
               now={now || undefined}
               role={hydrated ? role : "student"}
               authenticated={hydrated && authenticated}
+              visitor={visitor}
               questionsOpen={questionsOpen}
               onChanged={() => setTick((t) => t + 1)}
             />

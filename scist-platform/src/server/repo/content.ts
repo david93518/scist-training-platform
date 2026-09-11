@@ -453,8 +453,9 @@ async function loadChallengesPublic(): Promise<PublicChallenge[]> {
       kind: c.kind,
       blurb: c.blurb,
       description: c.description,
-      hints: [...c.hints].sort((a, b) => a.sortOrder - b.sortOrder).map((h) => ({ id: h.id, text: h.text, cost: h.cost })),
-      flags: [...c.flags].sort((a, b) => a.sortOrder - b.sortOrder).map((f) => ({ id: f.flagId, label: f.label, sha256: f.sha256, points: f.points })),
+      // the browser gets nothing it could use to skip the server: no hint text, no flag digests
+      hints: [...c.hints].sort((a, b) => a.sortOrder - b.sortOrder).map((h) => ({ id: h.id, cost: h.cost })),
+      flags: [...c.flags].sort((a, b) => a.sortOrder - b.sortOrder).map((f) => ({ id: f.flagId, label: f.label, points: f.points })),
       points: c.flags.reduce((n, f) => n + f.points, 0),
       solves: c.baseSolves + Number(solveCount),
       rating: c.rating,

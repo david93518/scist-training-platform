@@ -12,7 +12,6 @@ import type { AdminSettings } from "@/admin/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import { ladder, type Rank } from "@/lib/xp";
 import { certLadder, type CertRule } from "@/lib/certifications";
-import { useProgress } from "@/store/progress";
 
 const SettingsContext = createContext<AdminSettings>(DEFAULT_SETTINGS);
 
@@ -38,14 +37,4 @@ export function useCertifications(): CertRule[] {
 
 export function useFeatures() {
   return useSettings().features;
-}
-
-/**
- * Whether this visitor's progress is written down at all. Signed-in learners
- * always are; guests only while settings.features.guestProgress is on.
- */
-export function useCanRecordProgress() {
-  const guestProgress = useFeatures().guestProgress;
-  const authenticated = useProgress((s) => s.authenticated);
-  return authenticated || guestProgress;
 }

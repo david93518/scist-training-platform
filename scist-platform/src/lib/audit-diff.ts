@@ -263,7 +263,6 @@ const SETTING_LABELS: Record<string, string> = {
   "weekly.slug": "本週挑戰題目",
   "weekly.note": "本週挑戰說明",
   "weekly.bonusXp": "本週挑戰加分",
-  "features.guestProgress": "訪客進度",
   "features.instances": "靶機功能",
   "features.questions": "問答功能",
   ranks: "等級規則",

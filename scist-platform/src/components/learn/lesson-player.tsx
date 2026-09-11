@@ -30,7 +30,7 @@ import { lessonNeighbours, type Lesson, type Track } from "@/data/tracks";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
 import { isCallout } from "@/lib/callout";
 import { checkpointAtSec, checkpointProgress } from "@/lib/checkpoint";
-import { useCanRecordProgress } from "@/components/settings-provider";
+import { LoginWall } from "@/components/login-wall";
 import { cn, formatMinutes } from "@/lib/utils";
 
 type TabId = "quiz" | "lab" | "notes" | "qa";
@@ -48,11 +48,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
   const note = useProgress((s) => s.notes[key] ?? "");
   const isDone = useProgress((s) => s.completedLessons.includes(key));
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const setWatched = useProgress((s) => s.setWatched);
   const answerCheckpoint = useProgress((s) => s.answerCheckpoint);
   const setNote = useProgress((s) => s.setNote);
   const completeLesson = useProgress((s) => s.completeLesson);
-  const canRecord = useCanRecordProgress();
 
   const answeredSet = useMemo(() => new Set(answered ?? []), [answered]);
 
@@ -156,60 +156,66 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     { id: "qa", label: "問答", Icon: MessageSquare },
   ];
 
-  return (
-    <div className="flex min-w-0 flex-col gap-5">
-      {/* header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span
-              className="font-mono text-[11px] tracking-[0.16em]"
-              style={{ color: track.color }}
-            >
-              {track.en.toUpperCase()} · 第 {index + 1} / {total} 課
+  const header = (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span
+            className="font-mono text-[11px] tracking-[0.16em]"
+            style={{ color: track.color }}
+          >
+            {track.en.toUpperCase()} · 第 {index + 1} / {total} 課
+          </span>
+          {hydrated && isDone ? (
+            <span className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
+              <Check size={10} strokeWidth={3} />
+              已完成
             </span>
-            {hydrated && isDone ? (
-              <span className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
-                <Check size={10} strokeWidth={3} />
-                已完成
-              </span>
-            ) : null}
-          </div>
-          <h1 className="mt-1.5 text-balance text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">
-            {lesson.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-2">
-            {lesson.summary}
-          </p>
+          ) : null}
         </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-4 font-mono text-[11.5px] text-fg-3">
-          <span className="flex items-center gap-1.5">
-            <Clock size={13} />
-            {formatMinutes(lesson.durationSec)}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <ListChecks size={13} />
-            {lesson.checkpoints.length} 檢查站
-          </span>
-          <span className="flex items-center gap-1.5 text-accent">
-            <Zap size={13} />+{lesson.xp} XP
-          </span>
-          <DifficultyBadge level={track.difficulty} />
-        </div>
+        <h1 className="mt-1.5 text-balance text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">
+          {lesson.title}
+        </h1>
+        <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-2">
+          {lesson.summary}
+        </p>
       </div>
 
-      {hydrated && !canRecord ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
-          <Lock size={15} className="shrink-0 text-amber" />
-          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-fg-2">
-            目前沒有開放未登入者累積進度。你還是可以把這一課看完，但觀看位置、檢查站與筆記都不會留下來。
-          </p>
-          <LinkButton href="?login" variant="outline" size="sm">
-            登入才能記錄
-          </LinkButton>
-        </div>
-      ) : null}
+      <div className="flex shrink-0 flex-wrap items-center gap-4 font-mono text-[11.5px] text-fg-3">
+        <span className="flex items-center gap-1.5">
+          <Clock size={13} />
+          {formatMinutes(lesson.durationSec)}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <ListChecks size={13} />
+          {lesson.checkpoints.length} 檢查站
+        </span>
+        <span className="flex items-center gap-1.5 text-accent">
+          <Zap size={13} />+{lesson.xp} XP
+        </span>
+        <DifficultyBadge level={track.difficulty} />
+      </div>
+    </div>
+  );
+
+  // The route is gated in src/proxy.ts; this only shows up when the session
+  // expired or the account was suspended while the page was open.
+  if (hydrated && sessionChecked && !authenticated) {
+    return (
+      <div className="flex min-w-0 flex-col gap-5">
+        {header}
+        <LoginWall
+          title="登入後才能上課"
+          desc="看課進度、檢查站與筆記都記在你的帳號上。登入或註冊後會直接回到這一課。"
+          className="mx-auto w-full max-w-xl"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      {header}
 
       {/* stage + panel */}
       <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
@@ -407,12 +413,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                   <div className="flex items-center justify-between">
                     <span className="mono-label">我的筆記</span>
                     <span className="font-mono text-[10.5px] text-fg-3">
-                      {!canRecord ? "登入才能保存" : authenticated ? "自動儲存到你的帳號" : "自動儲存在這台裝置"}
+                      自動儲存到你的帳號
                     </span>
                   </div>
                   <textarea
                     value={hydrated ? note : ""}
-                    readOnly={!canRecord}
                     onChange={(e) => setNote(key, e.target.value)}
                     placeholder={
                       "在這裡記下你的理解、卡住的地方、想之後再查的東西。\n\n例如：\n- 為什麼兩個減號能註解掉後面？\n- 參數化查詢要在哪一層做？"
@@ -450,16 +455,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
               ) : (
                 <Button
                   className="w-full"
-                  variant={canComplete && canRecord ? "primary" : "outline"}
-                  disabled={!canComplete || !canRecord}
+                  variant={canComplete ? "primary" : "outline"}
+                  disabled={!canComplete}
                   onClick={onComplete}
                 >
-                  {!canRecord ? (
-                    <>
-                      <Lock size={14} />
-                      登入才能記錄完成
-                    </>
-                  ) : canComplete ? (
+                  {canComplete ? (
                     <>
                       <Check size={15} />
                       標記完成 +{lesson.xp} XP

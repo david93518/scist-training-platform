@@ -16,5 +16,5 @@ export const DEFAULT_SETTINGS: AdminSettings = {
   leaderboard: { weekStartsOn: 0 },
   // 出貨時先指一題，開學前在後台換掉；清成空字串整個區塊就不出現
   weekly: { slug: "sqli-login", note: "每週一換題。這一週最快解出的前三名，週日在 Discord 公告表揚並加分。", bonusXp: 100 },
-  features: { guestProgress: true, instances: true, questions: true },
+  features: { instances: true, questions: true },
 };

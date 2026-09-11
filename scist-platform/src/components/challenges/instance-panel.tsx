@@ -25,6 +25,7 @@ interface SpawnResponse {
   shared: boolean;
 }
 
+/** Per-learner challenge environment. Starting and stopping always go through the server. */
 export function InstancePanel({ challenge }: { challenge: Challenge }) {
   const info = useProgress((s) => s.instances[challenge.slug]);
   const spawn = useProgress((s) => s.spawnInstance);
@@ -45,19 +46,12 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
 
   const running = hydrated && instancesOn && Boolean(info);
   // the server hands out the real address once an instance exists; the
-  // challenge's fixed connection string is the shared / guest fallback
+  // challenge's fixed connection string is the shared fallback
   const address = running && info?.host ? info.host + (info.port ? ":" + info.port : "") : (challenge.connection?.value ?? "");
 
   const start = async () => {
     setError(null);
     setBooting(true);
-    if (!authenticated) {
-      setTimeout(() => {
-        spawn(challenge.slug);
-        setBooting(false);
-      }, 1200);
-      return;
-    }
     try {
       const res = await api<SpawnResponse>("/api/challenges/" + challenge.slug + "/instance", { method: "POST" });
       spawn(challenge.slug, { host: res.host, port: res.port, expiresAt: res.expiresAt });
@@ -70,17 +64,15 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
 
   const stop = async () => {
     setError(null);
-    if (authenticated) {
-      setStopping(true);
-      try {
-        await api("/api/challenges/" + challenge.slug + "/instance", { method: "DELETE" });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "終止失敗");
-      } finally {
-        setStopping(false);
-      }
+    setStopping(true);
+    try {
+      await api("/api/challenges/" + challenge.slug + "/instance", { method: "DELETE" });
+      kill(challenge.slug);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "終止失敗");
+    } finally {
+      setStopping(false);
     }
-    kill(challenge.slug);
   };
 
   const copy = async () => {
@@ -145,9 +137,7 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
               終止環境
             </Button>
             <p className="mt-2 text-[11.5px] leading-relaxed text-fg-3">
-              {authenticated
-                ? "這是你專屬的環境，兩小時後自動回收。壞了就終止再重開。"
-                : "未登入時只是模擬。登入後會啟動你專屬的 Docker 實例，兩小時後自動回收。"}
+              這是你專屬的環境，兩小時後自動回收。壞了就終止再重開。
             </p>
           </div>
         ) : instancesOn ? (
@@ -155,7 +145,7 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
             <p className="text-[12.5px] leading-relaxed text-fg-2">
               每位學員拿到自己的獨立環境，想怎麼打就怎麼打，壞了重開就好。
             </p>
-            <Button className="mt-3 w-full" onClick={start} disabled={booting}>
+            <Button className="mt-3 w-full" onClick={start} disabled={booting || !authenticated}>
               {booting ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
