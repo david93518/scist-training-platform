@@ -135,7 +135,9 @@ export function LessonEditor({ id }: { id?: string }) {
       const cleaned: AdminLesson = {
         ...draft,
         content: keepFilledBlocks(mergeContent(md, [...callouts, ...leftoverTips])),
-        checkpoints: [...draft.checkpoints].sort((a, b) => a.at - b.at).map((c) => ({ ...c, options: c.options.filter((o) => o.trim()) })),
+        checkpoints: [...draft.checkpoints]
+          .map((c) => ({ ...c, at: checkpointAtSec(c.at, draft.durationSec), options: c.options.filter((o) => o.trim()) }))
+          .sort((a, b) => a.at - b.at),
       };
       await api.lessons.save(cleaned);
       toast(id ? "已儲存" : "課程已建立");

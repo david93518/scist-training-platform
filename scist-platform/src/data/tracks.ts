@@ -17,7 +17,7 @@ export type ContentBlock =
   | CalloutBlock;
 
 export interface Checkpoint {
-  /** 出現在影片第幾秒。舊資料可能是 0–1 的比例，讀的時候走 checkpointAtSec() */
+  /** 出現在影片第幾秒。僅 (0, 1) 的小數當成舊比例，讀的時候走 checkpointAtSec() */
   at: number;
   question: string;
   options: string[];

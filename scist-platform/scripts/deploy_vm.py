@@ -86,8 +86,8 @@ def make_tar(tar_path: Path, env_file: Path) -> None:
         robocopy(swc.resolve(), stage / "node_modules" / "@swc" / "helpers")
     copy_next_peers(stage)
     copy_hook_peers(stage)
+    copy_integration_peers(stage)
     shutil.copy2(env_file, stage / ".env")
-    prune_optional(stage)
     if tar_path.exists():
         tar_path.unlink()
     print("write tar from", stage)
@@ -132,20 +132,27 @@ def copy_hook_peers(stage: Path) -> None:
             robocopy(child.resolve(), dest_nm / child.name)
 
 
-def prune_optional(stage: Path) -> None:
-    """Drop optional AWS/Sentry trees so Windows can tar the rest."""
-    nm = stage / "node_modules"
-    skip = ("@aws-sdk", "@sentry", "@opentelemetry", "@smithy")
-    for child in list(nm.iterdir()) if nm.exists() else []:
-        if child.name.startswith(skip):
-            shutil.rmtree(child, ignore_errors=True)
-    pnpm = nm / ".pnpm"
-    if not pnpm.exists():
-        return
-    for child in list(pnpm.iterdir()):
-        low = child.name.lower()
-        if low.startswith(skip) or any(low.startswith(s.replace("@", "") + "@") or s[1:] in low for s in skip):
-            shutil.rmtree(child, ignore_errors=True)
+def copy_integration_peers(stage: Path) -> None:
+    """R2 上傳與 Sentry 需要這些套件；Windows 打包時 Next 有時追不齊，從 pnpm 補上。"""
+    pnpm = ROOT / "node_modules" / ".pnpm"
+    dest_nm = stage / "node_modules"
+    globs = (
+        "@aws-sdk+client-s3@*",
+        "@aws-sdk+s3-request-presigner@*",
+        "@sentry+nextjs@*",
+    )
+    for pattern in globs:
+        matches = sorted(pnpm.glob(pattern), key=lambda p: len(str(p)))
+        if not matches:
+            continue
+        src = matches[0] / "node_modules"
+        if not src.exists():
+            continue
+        print("integration peers from", matches[0].name)
+        for child in src.iterdir():
+            if child.name.startswith("."):
+                continue
+            robocopy(child.resolve(), dest_nm / child.name)
 
 
 def add_tree(tar: tarfile.TarFile, src: Path, arcname: str) -> None:
