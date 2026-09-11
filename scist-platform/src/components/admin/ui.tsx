@@ -186,7 +186,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={cn(control, "h-10", props.className)} />;
+  return <select {...props} className={cn(control, "h-10 cursor-pointer appearance-auto", props.className)} />;
 }
 
 export function Toggle({

@@ -80,10 +80,17 @@ export function LessonsAdmin() {
           </>
         }
         actions={
-          <Link href="/admin/lessons/new" className={buttonClass("primary", "sm")}>
-            <Plus size={14} />
-            上架課程
-          </Link>
+          (tracks.data ?? []).length === 0 ? (
+            <Link href="/admin/tracks/new" className={buttonClass("primary", "sm")}>
+              <Plus size={14} />
+              先新增學習路徑
+            </Link>
+          ) : (
+            <Link href="/admin/lessons/new" className={buttonClass("primary", "sm")}>
+              <Plus size={14} />
+              上架課程
+            </Link>
+          )
         }
       />
 
@@ -222,7 +229,11 @@ export function LessonsAdmin() {
             </div>
           );
         })}
-        {visible.length === 0 && !lessons.loading ? <p className="py-10 text-center text-[13px] text-fg-3">沒有符合的課程。</p> : null}
+        {visible.length === 0 && !lessons.loading ? (
+          <p className="py-10 text-center text-[13px] text-fg-3">
+            {(tracks.data ?? []).length === 0 ? "還沒有學習路徑。課程要掛在路徑的章節底下，請先新增一條路徑。" : "沒有符合的課程。"}
+          </p>
+        ) : null}
       </div>
       <ToastHost />
     </div>

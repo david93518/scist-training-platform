@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquare, ThumbsUp, Check, Send, ShieldCheck, Loader2, Lock } from "lucide-react";
+import { MessageSquare, ThumbsUp, Check, Send, ShieldCheck, Loader2, Lock, Pencil, Trash2, Reply } from "lucide-react";
 import { HexAvatar, Button } from "@/components/ui/primitives";
-import type { Question } from "@/data/questions";
+import type { Answer, Question } from "@/data/questions";
 import { api } from "@/lib/api";
+import { can } from "@/lib/permissions";
 import { useProgress, useHydrated } from "@/store/progress";
 import { useFeatures } from "@/components/settings-provider";
 import { useNow } from "@/lib/use-now";
@@ -55,29 +56,141 @@ function VoteButton({
   );
 }
 
+/** 一列文字動作鈕，讓 meta 那排的編輯／刪除跟投票長得一致 */
+function MetaButton({
+  onClick,
+  disabled,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex items-center gap-1 rounded px-1.5 py-0.5 -mx-1.5 transition-colors hover:bg-white/[0.06] disabled:opacity-50",
+        danger ? "text-red hover:text-red" : "hover:text-fg-2",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** 兩段式刪除：先按一次才會出現「確定刪除」，免得誤觸 */
+function DeleteButton({ armed, onArm, onConfirm, busy }: { armed: boolean; onArm: () => void; onConfirm: () => void; busy: boolean }) {
+  if (!armed) {
+    return (
+      <MetaButton onClick={onArm} disabled={busy}>
+        <Trash2 size={10} />
+        刪除
+      </MetaButton>
+    );
+  }
+  return (
+    <MetaButton onClick={onConfirm} disabled={busy} danger>
+      <Trash2 size={10} />
+      確定刪除？
+    </MetaButton>
+  );
+}
+
+function EditBox({
+  title,
+  body,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  title?: string;
+  body: string;
+  onSave: (next: { title?: string; body: string }) => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const [t, setT] = useState(title ?? "");
+  const [b, setB] = useState(body);
+  const invalid = title !== undefined ? !t.trim() : !b.trim();
+
+  return (
+    <div className="mt-1 rounded-lg border border-line bg-bg-3/40 p-2.5">
+      {title !== undefined ? (
+        <input
+          value={t}
+          onChange={(e) => setT(e.target.value)}
+          className="w-full bg-transparent text-[13.5px] font-semibold text-fg outline-none"
+          placeholder="標題"
+        />
+      ) : null}
+      <textarea
+        value={b}
+        onChange={(e) => setB(e.target.value)}
+        rows={3}
+        className={cn(
+          "w-full resize-none bg-transparent text-[13px] leading-relaxed text-fg-2 outline-none placeholder:text-fg-3",
+          title !== undefined && "mt-1.5",
+        )}
+        placeholder="內容"
+      />
+      <div className="mt-1.5 flex items-center justify-end gap-2 border-t border-line pt-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          取消
+        </Button>
+        <Button type="button" size="sm" disabled={invalid || busy} onClick={() => onSave({ title: title !== undefined ? t.trim() : undefined, body: b.trim() })}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+          儲存
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Thread({
   q,
   now,
-  canVote,
+  role,
+  authenticated,
+  questionsOpen,
   onChanged,
 }: {
   q: Question;
   now?: number;
-  canVote: boolean;
+  role: string;
+  authenticated: boolean;
+  questionsOpen: boolean;
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(q.answers.length > 0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState<string | null>(null);
+  /** 目前按了一次刪除、等第二次確認的對象："q" 或回覆 id */
+  const [armed, setArmed] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+
+  const editLocal = useProgress((s) => s.editQuestion);
+  const removeLocal = useProgress((s) => s.removeQuestion);
+
   const local = q.id.startsWith("local-");
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (fn: () => Promise<unknown> | unknown, done?: () => void) => {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       await fn();
+      done?.();
+      setArmed(null);
       onChanged();
-    } catch {
-      /* the list refreshes on the next poll; a failed vote is not worth a toast */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "操作失敗");
     } finally {
       setBusy(false);
     }
@@ -86,21 +199,59 @@ function Thread({
   const vote = (on: boolean, answerId?: string) =>
     act(() => api("/api/questions/" + q.id + "/vote", { body: { on, answerId } }));
 
-  const accept = (answerId: string) =>
+  const accept = (answerId: string | null) =>
     act(() => api("/api/questions/" + q.id, { method: "PATCH", body: { acceptedAnswerId: answerId } }));
 
-  const votable = canVote && !local;
+  const votable = authenticated && !local;
+  // 回覆權限跟後台問答頁同一張表：助教以上不受「暫停發問」影響，也不會被限流
+  const staff = can(role, "questions.answer");
+  const mayModerate = can(role, "questions.delete");
+  const mayReply = authenticated && !local && (questionsOpen || staff);
+  const mayAccept = (q.mine || staff) && !local;
+  // 已經有別人回覆就不讓作者整串刪掉，會把別人寫的東西一起帶走
+  const mayDeleteThread = mayModerate || (Boolean(q.mine) && q.answers.every((a) => a.mine));
+
+  const submitReply = () => {
+    const body = reply.trim();
+    if (!body) return;
+    act(() => api("/api/questions/" + q.id + "/answers", { body: { body } }), () => setReply(""));
+  };
+
+  const saveQuestion = (next: { title?: string; body: string }) =>
+    act(
+      () =>
+        local
+          ? editLocal(q.id, { title: next.title ?? q.title, body: next.body })
+          : api("/api/questions/" + q.id, { method: "PATCH", body: { title: next.title, body: next.body } }),
+      () => setEditing(false),
+    );
+
+  const deleteThread = () =>
+    act(() => (local ? removeLocal(q.id) : api("/api/questions/" + q.id, { method: "DELETE" })));
+
+  const saveAnswer = (a: Answer, body: string) =>
+    act(() => api("/api/questions/" + q.id + "/answers/" + a.id, { method: "PATCH", body: { body } }), () => setEditingAnswer(null));
+
+  const deleteAnswer = (a: Answer) =>
+    act(() => api("/api/questions/" + q.id + "/answers/" + a.id, { method: "DELETE" }));
 
   return (
     <div className="border-b border-line py-4 last:border-b-0">
       <div className="flex gap-3">
         <HexAvatar seed={q.author} size={30} />
         <div className="min-w-0 flex-1">
-          <h4 className="text-[14px] font-bold leading-snug text-fg">{q.title}</h4>
-          <p className="mt-1.5 text-[13px] leading-relaxed text-fg-2">{q.body}</p>
+          {editing ? (
+            <EditBox title={q.title} body={q.body} busy={busy} onCancel={() => setEditing(false)} onSave={saveQuestion} />
+          ) : (
+            <>
+              <h4 className="text-[14px] font-bold leading-snug text-fg">{q.title}</h4>
+              {q.body ? <p className="mt-1.5 text-[13px] leading-relaxed text-fg-2">{q.body}</p> : null}
+            </>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-fg-3">
             <span className="text-fg-2">{q.author}</span>
             <span>{relativeTime(q.createdAt, now)}</span>
+            {q.editedAt ? <span title={"編輯於 " + relativeTime(q.editedAt, now)}>已編輯</span> : null}
             <VoteButton votes={q.votes} voted={q.voted} disabled={!votable} onVote={() => vote(!q.voted)} />
             {q.answers.length > 0 ? (
               <button
@@ -113,11 +264,26 @@ function Thread({
             ) : (
               <span className="text-amber">等待回覆</span>
             )}
+            {mayReply && !open ? (
+              <MetaButton onClick={() => setOpen(true)}>
+                <Reply size={10} />
+                回覆
+              </MetaButton>
+            ) : null}
+            {q.mine && !editing ? (
+              <MetaButton onClick={() => setEditing(true)} disabled={busy}>
+                <Pencil size={10} />
+                編輯
+              </MetaButton>
+            ) : null}
+            {mayDeleteThread ? (
+              <DeleteButton armed={armed === "q"} busy={busy} onArm={() => setArmed("q")} onConfirm={deleteThread} />
+            ) : null}
           </div>
         </div>
       </div>
 
-      {open && q.answers.length > 0 ? (
+      {open ? (
         <div className="ml-4 mt-3 flex flex-col gap-3 border-l border-line pl-5">
           {q.answers.map((a) => (
             <div key={a.id} className="flex gap-2.5">
@@ -144,8 +310,13 @@ function Thread({
                   <span className="font-mono text-[10.5px] text-fg-3">
                     {relativeTime(a.createdAt, now)}
                   </span>
+                  {a.editedAt ? <span className="font-mono text-[10.5px] text-fg-3">已編輯</span> : null}
                 </div>
-                <p className="mt-1 text-[13px] leading-relaxed text-fg-2">{a.body}</p>
+                {editingAnswer === a.id ? (
+                  <EditBox body={a.body} busy={busy} onCancel={() => setEditingAnswer(null)} onSave={(n) => saveAnswer(a, n.body)} />
+                ) : (
+                  <p className="mt-1 text-[13px] leading-relaxed text-fg-2">{a.body}</p>
+                )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-3 font-mono text-[10.5px] text-fg-3">
                   <VoteButton
                     votes={a.votes}
@@ -154,22 +325,52 @@ function Thread({
                     onVote={() => vote(!a.voted, a.id)}
                     size="sm"
                   />
-                  {q.mine && !a.accepted ? (
-                    <button
-                      type="button"
-                      onClick={() => accept(a.id)}
-                      disabled={busy}
-                      className="rounded px-1.5 py-0.5 -mx-1.5 text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
-                    >
-                      這個解決了我的問題
-                    </button>
+                  {mayAccept ? (
+                    <MetaButton onClick={() => accept(a.accepted ? null : a.id)} disabled={busy}>
+                      <Check size={10} />
+                      {a.accepted ? "取消最佳解答" : "這個解決了我的問題"}
+                    </MetaButton>
+                  ) : null}
+                  {a.mine && editingAnswer !== a.id ? (
+                    <MetaButton onClick={() => setEditingAnswer(a.id)} disabled={busy}>
+                      <Pencil size={10} />
+                      編輯
+                    </MetaButton>
+                  ) : null}
+                  {a.mine || mayModerate ? (
+                    <DeleteButton armed={armed === a.id} busy={busy} onArm={() => setArmed(a.id)} onConfirm={() => deleteAnswer(a)} />
                   ) : null}
                 </div>
               </div>
             </div>
           ))}
+
+          {mayReply ? (
+            <div className="mt-1">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                rows={2}
+                placeholder={q.mine ? "補充你後來又試了什麼，或追問沒講清楚的地方" : "回覆這個問題"}
+                className="w-full resize-none rounded-lg border border-line bg-bg-3/40 px-3 py-2 text-[13px] leading-relaxed text-fg-2 outline-none placeholder:text-fg-3 focus:border-accent/40"
+              />
+              <div className="mt-1.5 flex items-center justify-between gap-3">
+                <span className="font-mono text-[10.5px] text-fg-3">
+                  {q.answers.some((a) => a.accepted) ? "已經有最佳解答，還是可以繼續補充或追問" : "\u00a0"}
+                </span>
+                <Button type="button" size="sm" disabled={!reply.trim() || busy} onClick={submitReply}>
+                  {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  送出回覆
+                </Button>
+              </div>
+            </div>
+          ) : authenticated || local ? null : (
+            <p className="font-mono text-[10.5px] text-fg-3">登入後才能回覆這個討論</p>
+          )}
         </div>
       ) : null}
+
+      {error ? <p className="mt-2 text-[12px] text-red">{error}</p> : null}
     </div>
   );
 }
@@ -178,7 +379,8 @@ function Thread({
  * Threads for a lesson or a challenge, read from GET /api/questions. Signed-in
  * learners post through the API (and on to Discord); guests keep their
  * questions in this browser only. Turning off settings.features.questions
- * leaves the threads readable but takes the composer away.
+ * leaves the threads readable but takes the composer away — 助教以上不受影響，
+ * 因為他們本來就要在前台回覆。
  */
 export function QaPanel({
   scope,
@@ -192,6 +394,7 @@ export function QaPanel({
   const asked = useProgress((s) => s.askedQuestions);
   const ask = useProgress((s) => s.askQuestion);
   const handle = useProgress((s) => s.handle);
+  const role = useProgress((s) => s.role);
   const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
   const questionsOpen = useFeatures().questions;
@@ -227,6 +430,7 @@ export function QaPanel({
           createdAt: q.createdAt,
           votes: 0,
           answers: [],
+          mine: true,
         }))
     : [];
 
@@ -322,7 +526,9 @@ export function QaPanel({
               key={q.id}
               q={q}
               now={now || undefined}
-              canVote={hydrated && authenticated}
+              role={hydrated ? role : "student"}
+              authenticated={hydrated && authenticated}
+              questionsOpen={questionsOpen}
               onChanged={() => setTick((t) => t + 1)}
             />
           ))

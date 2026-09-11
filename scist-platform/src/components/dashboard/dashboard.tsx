@@ -27,7 +27,8 @@ import {
 } from "@/components/ui/primitives";
 import { allLessons, trackLessonCount, type Track } from "@/data/tracks";
 import type { Challenge } from "@/data/challenges";
-import { SCHOOLS, schoolById } from "@/data/schools";
+import { SCHOOLS, schoolName } from "@/data/schools";
+import { ProfileForm } from "@/components/dashboard/profile-form";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
 import { useCertifications, useRanks } from "@/components/settings-provider";
 import { Certifications } from "@/components/dashboard/certifications";
@@ -49,6 +50,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
   const authenticated = useProgress((s) => s.authenticated);
   const xp = useProgress((s) => s.xp);
   const handle = useProgress((s) => s.handle);
+  const displayName = useProgress((s) => s.displayName);
   const schoolId = useProgress((s) => s.schoolId);
   const completed = useProgress((s) => s.completedLessons);
   const role = useProgress((s) => s.role);
@@ -141,6 +143,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
                   onChange={(e) => setProfile(draftHandle || handle, e.target.value)}
                   className="h-9 rounded-lg border border-line bg-bg-0 px-2 text-[13px] text-fg-2 outline-none"
                 >
+                  <option value="">先不填</option>
                   {SCHOOLS.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.short}
@@ -159,8 +162,8 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="font-mono text-[26px] font-extrabold tracking-tight">
-                  {hydrated ? handle : "guest"}
+                <h1 className="text-[26px] font-extrabold tracking-tight">
+                  {hydrated ? displayName || handle : "guest"}
                 </h1>
                 <span
                   className="rounded-md border px-2 py-0.5 text-[12px] font-semibold"
@@ -201,7 +204,10 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
             )}
 
             <div className="mt-1 text-[13px] text-fg-3">
-              {schoolById(hydrated ? schoolId : "tnfsh")?.name} · {rank.blurb}
+              {hydrated && displayName && displayName !== handle ? (
+                <span className="mr-2 font-mono text-fg-2">@{handle}</span>
+              ) : null}
+              {schoolName(hydrated ? schoolId : "")} · {rank.blurb}
             </div>
 
             <div className="mt-4 max-w-md">
@@ -240,7 +246,12 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
         </div>
       </div>
 
-      {hydrated && authenticated ? <PasswordForm /> : null}
+      {hydrated && authenticated ? (
+        <>
+          <ProfileForm />
+          <PasswordForm />
+        </>
+      ) : null}
 
       {/* up next */}
       {upNext ? (

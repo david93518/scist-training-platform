@@ -40,7 +40,8 @@ flowchart LR
 | `src/app/(pages)` | 前台頁面，全部 `force-dynamic`，每次請求從資料庫讀 |
 | `src/app/admin/**` | 後台：總覽、路徑、課程與影片、題庫、活動、講師、學員與角色、問答、靶機環境、數據、操作紀錄、設定 |
 | `src/app/api/**` | Route Handler，合約在 [API.md](API.md) |
-| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有講師以上的 session 就導回 `/?login=admin&next=原路徑`，首頁的登入框讀到後開啟，登入完帶回原頁 |
+| `src/proxy.ts` | `/admin/*` 的伺服器端守門：沒有助教以上的 session 就導回 `/?login=admin&next=原路徑`，首頁的登入框讀到後開啟，登入完帶回原頁 |
+| `src/lib/permissions.ts` | 四個角色的能力對照表。API、守門、側邊欄、按鈕都讀它 |
 | `src/components/**` | UI 元件；`admin/` 是後台專用；`progress-sync.tsx` 負責把 session 同步進學員端狀態 |
 | `src/admin/` | 後台的資料介面 `AdminApi`（HTTP 版與本機版）與型別 |
 | `src/store/progress.ts` | 學員端狀態：訪客存 localStorage；登入後每個動作鏡射到 API，並從 `/api/me` 回填 |
@@ -62,7 +63,7 @@ flowchart LR
 
 - **內容**：`tracks → modules → lessons`；`challenges` 帶 `challenge_flags`（只存 SHA-256）、`challenge_hints`、`challenge_files`；`events`；`instructors`；`schools`。
 - **學員**：`users`（帳號、密碼雜湊、可選 Discord、角色）、`lesson_progress`（看到哪、檢查站、筆記）、`solves`、`attempts`（只存提交的雜湊）、`hint_unlocks`、`xp_ledger`（所有 XP 變動的流水帳，排行榜與統計由它加總）、`instances`、`event_registrations`。
-- **社群**：`questions`、`answers`。
+- **社群**：`questions`、`answers`（兩張都有 `edited_at`，作者改過內容才有值）、`question_votes`、`answer_votes`。
 - **營運**：`settings`（key/value JSON）、`audit_log`（後台每個寫入一筆，`/admin/audit` 顯示）。
 
 課程內容（段落、程式碼、提示框）與檢查站題目以 JSON 存在 `lessons.content` / `lessons.checkpoints`，型別與前台共用（`src/data/tracks.ts` 的 `ContentBlock`、`Checkpoint`）。
@@ -71,15 +72,41 @@ flowchart LR
 
 - **前台頁面**：Server Component 呼叫 repo（例如 `getTracksPublic()`），拿到跟 `src/data` 一樣形狀的物件，直接渲染。互動元件（播放器、flag 提交、問答）是 client component，透過 `/api/*` 寫入。
 - **學員狀態**：`ProgressSync` 在每次載入與分頁回到前景時打 `GET /api/me`。有 session 就用回應覆蓋本機 store（伺服器為準）；沒有就當訪客。訪客第一次登入時，瀏覽器裡的檢查站、看課進度、筆記會重播到帳號。
-- **後台**：client component 透過 `AdminApi.http` 打 `/api/admin/*`；`proxy.ts` 先確認 cookie 裡的角色，API 再各自 `requireRole`。
+- **後台**：client component 透過 `AdminApi.http` 打 `/api/admin/*`；`proxy.ts` 先確認 cookie 裡的角色進不進得了後台，API 再各自 `requireCap`。
 
 ## 登入與權限
 
 - Session 是 `jose` 簽的 JWT，放在 httpOnly cookie `scist_session`，30 天。
 - 預設登入是帳號密碼（scrypt 雜湊）。註冊一律學員；庫裡還沒有管理員時，第一個註冊的人成為管理員。`ADMIN_HANDLES` / `BOOTSTRAP_ADMIN_*` 可指定管理員。
-- 角色四級：`student < ta < instructor < admin`。`requireRole("instructor")` 之類的守衛在每支 API 裡。角色只能由管理員改，不能在登入時自選。
+- 角色四級：`student < ta < instructor < admin`。角色只能由管理員改，不能在登入時自選。
 - 角色以資料庫為準（cookie 只是快取；`GET /api/me` 會重簽），停權的帳號立即失效。
+- 停權的人登入時看得到原因：密碼**驗過之後**才回「已被停權」（403，附求助管道），密碼錯或帳號不存在仍一律回「帳號或密碼不對」，所以拿不來探帳號。說法統一寫在 `src/lib/ban-notice.ts`，Discord 登入與「用到一半被停權」共用同一句。
 - `ENABLE_DEV_LOGIN=1` 才開 `POST/GET /api/auth/dev` 與 `/admin?as=…`。正式站永遠關。
+
+### 角色能做什麼
+
+**`src/lib/permissions.ts` 是唯一的一份定義。** API 的 `requireCap()`、`proxy.ts` 的擋門、後台側邊欄要不要出現、按鈕要不要畫出來，全部讀同一張 `CAPABILITY` 表，所以「看得到就一定按得動」。要調權限改那張表的一行就好，不用翻 route。
+
+| | 學員 student | 助教 ta | 講師 instructor | 管理員 admin |
+| --- | :-: | :-: | :-: | :-: |
+| 前台上課、解題、發問 | ✓ | ✓ | ✓ | ✓ |
+| 前台編輯、刪除自己的提問與回覆 | ✓ | ✓ | ✓ | ✓ |
+| 進後台 | | ✓ | ✓ | ✓ |
+| 問答：前台直接回覆、集中檢視、標最佳解答 | | ✓ | ✓ | ✓ |
+| 問答：刪除別人的問題或回覆 | | | ✓ | ✓ |
+| 靶機環境：檢視、關閉單一 | | ✓ | ✓ | ✓ |
+| 靶機環境：全部關閉 | | | ✓ | ✓ |
+| 總覽、數據 | | | ✓ | ✓ |
+| 路徑／課程／題庫／活動／講師的增修與刪除 | | | ✓ | ✓ |
+| 刪整條路徑、移除講師 | | | | ✓ |
+| CTFd 匯入 | | | | ✓ |
+| 學員名單與個別學習紀錄 | | | 唯讀 | ✓ |
+| 改角色、停權、調 XP、重設密碼 | | | | ✓ |
+| 站點設定與整合 | | | | ✓ |
+| 操作紀錄 | | | | ✓ |
+| 全站資料匯出 | | | | ✓ |
+
+助教進後台會直接落在「問答」，側邊欄只有問答與靶機環境兩項。講師看不到操作紀錄與設定，學員與角色頁對他是唯讀的。
 
 ## 資料庫
 
@@ -96,7 +123,7 @@ flowchart LR
 | 開關 | 不設定 | `NEXT_PUBLIC_ADMIN_API=local` |
 | 資料在哪 | 資料庫 | 瀏覽器 localStorage |
 | 前台會變嗎 | 會 | 不會 |
-| 需要登入嗎 | 要（講師以上） | 不用（只適合看畫面，不要當正式後台） |
+| 需要登入嗎 | 要（助教以上，功能依角色而異） | 不用（只適合看畫面，不要當正式後台） |
 | 適合 | 真正上架內容 | 看畫面、demo、UX 討論 |
 
 ## 部署拓樸（建議）

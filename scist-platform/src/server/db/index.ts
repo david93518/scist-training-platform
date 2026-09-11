@@ -56,7 +56,9 @@ async function connect(): Promise<Db> {
   }
 
   const { PGlite } = await import("@electric-sql/pglite");
-  const dir = path.isAbsolute(PGLITE_DIR) ? PGLITE_DIR : path.join(process.cwd(), PGLITE_DIR);
+  const dir = path.isAbsolute(PGLITE_DIR)
+    ? PGLITE_DIR
+    : path.join(/*turbopackIgnore: true*/ process.cwd(), PGLITE_DIR);
   mkdirSync(dir, { recursive: true }); // PGlite does not create parent folders
   const client = new PGlite(dir);
   const db = drizzlePglite(client, { schema });

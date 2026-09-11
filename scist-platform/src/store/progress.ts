@@ -45,7 +45,7 @@ export interface InstanceInfo {
 /** What GET /api/me returns for a signed-in learner. */
 export interface ServerProfile {
   authenticated: true;
-  user: { id: string; handle: string; displayName: string | null; avatarUrl: string | null; role: Role; schoolId: string | null; school: string | null };
+  user: { id: string; handle: string; displayName: string | null; avatarUrl: string | null; role: Role; schoolId: string | null; school: string | null; schoolEditCount?: number };
   hasPassword: boolean;
   xp: number;
   watched: Record<LessonKey, number>;
@@ -65,9 +65,13 @@ interface ProgressState {
   userId: string | null;
   /** set after the first /api/me round trip of this page load (not persisted) */
   sessionChecked: boolean;
+  /** 這次 /api/me 發現帳號被停權了，登入視窗要說明原因（不持久化） */
+  banned: boolean;
 
   handle: string;
+  displayName: string;
   schoolId: string;
+  schoolEditCount: number;
   role: Role;
   hasPassword: boolean;
   xp: number;
@@ -103,7 +107,10 @@ interface ProgressState {
   spawnInstance: (slug: string, info?: Omit<InstanceInfo, "startedAt">) => void;
   killInstance: (slug: string) => void;
   toggleEvent: (id: string) => void;
+  dismissBanned: () => void;
   askQuestion: (q: Omit<PostedQuestion, "id" | "createdAt">) => void;
+  editQuestion: (id: string, patch: { title: string; body: string }) => void;
+  removeQuestion: (id: string) => void;
   reset: () => void;
 }
 
@@ -111,7 +118,9 @@ const initial = {
   authenticated: false,
   userId: null as string | null,
   handle: "guest",
-  schoolId: "tnfsh",
+  displayName: "",
+  schoolId: "",
+  schoolEditCount: 0,
   role: "student" as Role,
   hasPassword: false,
   xp: 0,
@@ -125,6 +134,7 @@ const initial = {
   registeredEvents: [] as string[],
   askedQuestions: [] as PostedQuestion[],
   log: [] as ActivityEntry[],
+  banned: false,
 };
 
 function entry(kind: ActivityEntry["kind"], label: string, xp: number): ActivityEntry {
@@ -171,9 +181,14 @@ export async function refreshProfile(force = false) {
   if (!force && Date.now() - lastRefresh < 4000) return;
   lastRefresh = Date.now();
   try {
-    const me = await api<{ authenticated: boolean } & Partial<ServerProfile>>("/api/me");
-    if (me.authenticated) useProgress.getState().hydrateFromServer(me as ServerProfile);
-    else useProgress.getState().markGuest();
+    const me = await api<{ authenticated: boolean; banned?: boolean } & Partial<ServerProfile>>("/api/me");
+    if (me.authenticated) {
+      useProgress.getState().hydrateFromServer(me as ServerProfile);
+    } else {
+      useProgress.getState().markGuest();
+      // markGuest 會把狀態洗回初始值，所以旗標要在它之後才設
+      if (me.banned) useProgress.setState({ banned: true });
+    }
   } catch {
     useProgress.setState({ sessionChecked: true });
   }
@@ -217,6 +232,7 @@ export const useProgress = create<ProgressState>()(
     (set, get) => ({
       ...initial,
       sessionChecked: false,
+      banned: false,
 
       hydrateFromServer: (p) => {
         const s = get();
@@ -224,11 +240,14 @@ export const useProgress = create<ProgressState>()(
         set({
           authenticated: true,
           sessionChecked: true,
+          banned: false,
           userId: p.user.id,
           handle: p.user.handle,
+          displayName: p.user.displayName?.trim() || "",
           role: p.user.role,
           hasPassword: Boolean(p.hasPassword),
-          schoolId: p.user.schoolId ?? s.schoolId,
+          schoolId: p.user.schoolId ?? "",
+          schoolEditCount: p.user.schoolEditCount ?? 0,
           xp: p.xp,
           watched: p.watched ?? {},
           completedLessons: p.completedLessons ?? [],
@@ -247,12 +266,14 @@ export const useProgress = create<ProgressState>()(
       markGuest: () =>
         set((s) => (s.authenticated ? { ...initial, sessionChecked: true } : { sessionChecked: true, authenticated: false, userId: null })),
 
+      dismissBanned: () => set({ banned: false }),
+
       logout: async () => {
         await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
         set({ ...initial, sessionChecked: true });
       },
 
-      setProfile: (handle, schoolId, role) => set((s) => ({ handle, schoolId, role: role ?? s.role })),
+      setProfile: (handle, schoolId, role) => set((s) => ({ handle, displayName: s.displayName || handle, schoolId, role: role ?? s.role })),
 
       setWatched: (key, value) => {
         if (!mayRecord(get().authenticated)) return;
@@ -340,12 +361,18 @@ export const useProgress = create<ProgressState>()(
           askedQuestions: [{ ...q, id: "local-" + Date.now(), createdAt: new Date().toISOString() }, ...s.askedQuestions],
         })),
 
+      /** 還沒登入時發的問題只存在這台瀏覽器，改跟刪都在本機做完 */
+      editQuestion: (id, patch) =>
+        set((s) => ({ askedQuestions: s.askedQuestions.map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
+
+      removeQuestion: (id) => set((s) => ({ askedQuestions: s.askedQuestions.filter((q) => q.id !== id) })),
+
       reset: () => set({ ...initial, sessionChecked: get().sessionChecked }),
     }),
     {
       name: "scist-gate-progress",
       version: 2,
-      partialize: (s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== "sessionChecked")) as ProgressState,
+      partialize: (s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== "sessionChecked" && k !== "banned")) as ProgressState,
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<ProgressState> & { instances?: Record<string, number | InstanceInfo> };
         if (version < 2) {

@@ -24,7 +24,7 @@ export const contentBlockSchema = z.discriminatedUnion("type", [
 ]);
 
 export const checkpointSchema = z.object({
-  at: z.number().min(0).max(1),
+  at: z.number().min(0).max(36000),
   question: z.string().min(1).max(500),
   options: z.array(z.string().max(300)).min(2).max(6),
   answer: z.number().int().min(0).max(5),
@@ -172,6 +172,7 @@ export const progressSchema = z.discriminatedUnion("action", [
 ]);
 
 export const attemptSchema = z.object({ flag: z.string().min(1).max(500) });
+export const hintUnlockSchema = z.object({ hintId: id });
 export const questionCreateSchema = z.object({ scope: z.enum(["lesson", "challenge"]), refId: z.string().min(1).max(200), title: z.string().min(1).max(200), body: z.string().max(4000) });
 export const answerCreateSchema = z.object({ body: z.string().min(1).max(4000) });
 export const registerSchema = z.object({ on: z.boolean() });
@@ -188,12 +189,24 @@ export const changePasswordSchema = z.object({
   current: z.string().max(128).optional(),
   next: z.string().min(8).max(128),
 });
+export const profilePatchSchema = z.object({
+  displayName: z.string().trim().min(1, "暱稱不能空白").max(24, "暱稱最多 24 個字"),
+  schoolId: z.string().max(32).optional().nullable(),
+});
 export const adminPasswordSchema = z.object({
   password: z.string().min(8).max(128),
 });
 export const devLoginSchema = z.object({ handle: z.string().min(1).max(20), schoolId: z.string().optional(), role: roleSchema });
 export const userPatchSchema = z.object({ role: roleSchema.optional(), banned: z.boolean().optional() });
-export const questionPatchSchema = z.object({ acceptedAnswerId: z.string() });
+/** 採納（`acceptedAnswerId: null` 是取消採納）與作者編輯共用同一支 PATCH */
+export const questionPatchSchema = z
+  .object({
+    acceptedAnswerId: z.string().max(64).nullable().optional(),
+    title: z.string().min(1).max(200).optional(),
+    body: z.string().max(4000).optional(),
+  })
+  .refine((v) => v.acceptedAnswerId !== undefined || v.title !== undefined || v.body !== undefined, "沒有要改的東西");
+export const answerPatchSchema = z.object({ body: z.string().min(1).max(4000) });
 export const voteSchema = z.object({ on: z.boolean(), answerId: z.string().min(1).max(64).optional() });
 export const reorderSchema = z.object({ moduleId: id, ids: z.array(id).max(200) });
 export const uploadVideoSchema = z.object({ lessonId: id, name: z.string().max(200), size: z.number().int().min(0), type: z.string().max(100) });

@@ -11,7 +11,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { sha256Hex } from "@/lib/hash";
-import { deleteObject, publicUrl } from "../services/r2";
+import { publicUrl } from "../services/r2-url";
 import { cached, invalidate, TTL } from "../cache";
 import type { AdminChallenge, AdminEvent, AdminLesson, AdminTrack } from "@/admin/types";
 import type { Track as PublicTrack, Lesson as PublicLesson } from "@/data/tracks";
@@ -44,6 +44,10 @@ export async function listTracksAdmin(): Promise<AdminTrack[]> {
     status: t.status,
     modules: t.modules.map((m) => ({ id: m.id, title: m.title, sortOrder: m.sortOrder })),
   }));
+}
+
+export async function findTrackAdmin(id: string): Promise<AdminTrack | null> {
+  return (await listTracksAdmin()).find((t) => t.id === id) ?? null;
 }
 
 export async function saveTrack(input: AdminTrack): Promise<AdminTrack> {
@@ -116,6 +120,12 @@ export async function listLessonsAdmin(): Promise<AdminLesson[]> {
   const db = await getDb();
   const rows = await db.select().from(schema.lessons).orderBy(asc(schema.lessons.sortOrder));
   return rows.map(toAdminLesson);
+}
+
+export async function findLessonAdmin(id: string): Promise<AdminLesson | null> {
+  const db = await getDb();
+  const row = await db.query.lessons.findFirst({ where: eq(schema.lessons.id, id) });
+  return row ? toAdminLesson(row) : null;
 }
 
 export async function saveLesson(input: AdminLesson, actorId?: string): Promise<AdminLesson> {
@@ -212,9 +222,16 @@ export async function listChallengesAdmin(): Promise<AdminChallenge[]> {
 async function dropOrphanedObjects(before: { objectKey: string | null }[], after: { objectKey: string | null }[]) {
   const kept = new Set(after.map((f) => f.objectKey).filter((k): k is string => Boolean(k)));
   const gone = [...new Set(before.map((f) => f.objectKey).filter((k): k is string => Boolean(k)))].filter((k) => !kept.has(k));
+  const { deleteObject } = await import("../services/r2");
   for (const key of gone) {
     await deleteObject(key).catch((err) => console.error("[r2] could not delete " + key, err));
   }
+}
+
+export async function findChallengeAdmin(id: string): Promise<AdminChallenge | null> {
+  const db = await getDb();
+  const row = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, id), with: { flags: true, hints: true, files: true } });
+  return row ? toAdminChallenge(row) : null;
 }
 
 export async function saveChallenge(input: AdminChallenge, actorId?: string): Promise<AdminChallenge> {
@@ -311,6 +328,12 @@ export async function listEventsAdmin(): Promise<AdminEvent[]> {
   const db = await getDb();
   const rows = await db.select().from(schema.events).orderBy(asc(schema.events.startsAt));
   return rows.map(toAdminEvent);
+}
+
+export async function findEventAdmin(id: string): Promise<AdminEvent | null> {
+  const db = await getDb();
+  const [row] = await db.select().from(schema.events).where(eq(schema.events.id, id));
+  return row ? toAdminEvent(row) : null;
 }
 
 export async function saveEvent(input: AdminEvent): Promise<AdminEvent> {

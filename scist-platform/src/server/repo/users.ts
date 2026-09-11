@@ -96,6 +96,13 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
   };
 }
 
+/** 帳號的帳號名與角色，給操作紀錄取「改之前是什麼」用 */
+export async function findUserBasic(id: string) {
+  const db = await getDb();
+  const [u] = await db.select({ handle: schema.users.handle, role: schema.users.role }).from(schema.users).where(eq(schema.users.id, id));
+  return u ?? null;
+}
+
 export async function setUserRole(actor: { id: string; role: Role }, id: string, role: Role) {
   if (actor.role !== "admin") throw new ApiError(403, "只有管理員能改角色");
   if (actor.id === id && role !== "admin") throw new ApiError(400, "不能把自己降級");

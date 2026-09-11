@@ -3,6 +3,8 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Captions, Maximize2, Volume2, Gauge, Film } from "lucide-react";
 import { cn, formatDuration } from "@/lib/utils";
+import { CALLOUT_META, isCallout } from "@/lib/callout";
+import { checkpointProgress } from "@/lib/checkpoint";
 import type { Lesson } from "@/data/tracks";
 
 /** Where the lecture comes from. `none` renders the code-replay stand-in. */
@@ -350,11 +352,17 @@ export function VideoStage({
   const tokens = useMemo(() => codeLines.map(tokenize), [codeLines]);
 
   const caption = useMemo(() => {
+    const tips = lesson.content.filter(isCallout).filter((b) => b.text.trim());
+    if (tips.length > 0) {
+      const idx = Math.min(tips.length - 1, Math.floor(position * tips.length));
+      const tip = tips[idx];
+      return { label: CALLOUT_META[tip.tone].label, text: tip.text };
+    }
     const paras = lesson.content.filter((b) => b.type === "p");
-    if (paras.length === 0) return lesson.summary;
+    if (paras.length === 0) return { label: null, text: lesson.summary };
     const idx = Math.min(paras.length - 1, Math.floor(position * paras.length));
     const p = paras[idx];
-    return p.type === "p" ? p.text : lesson.summary;
+    return { label: null, text: p.type === "p" ? p.text : lesson.summary };
   }, [lesson, position]);
 
   const revealed = Math.ceil(position * codeLines.length);
@@ -482,11 +490,14 @@ export function VideoStage({
         </div>
 
         {/* captions */}
-        {captions ? (
+        {captions && caption.text ? (
           <div className="pointer-events-none absolute inset-x-4 bottom-4 sm:inset-x-12">
-            <p className="mx-auto max-w-2xl rounded-xl border border-white/[0.06] bg-bg-0/85 px-5 py-2.5 text-center text-[13px] leading-relaxed text-fg backdrop-blur sm:text-[15px]">
-              {caption}
-            </p>
+            <div className="mx-auto max-w-2xl rounded-xl border border-white/[0.06] bg-bg-0/85 px-5 py-2.5 text-center backdrop-blur">
+              {caption.label ? (
+                <div className="mb-1 font-mono text-[10.5px] tracking-widest text-accent">{caption.label}</div>
+              ) : null}
+              <p className="text-[13px] leading-relaxed text-fg sm:text-[15px]">{caption.text}</p>
+            </div>
           </div>
         ) : null}
       </div>
@@ -514,18 +525,21 @@ export function VideoStage({
               style={{ width: position * 100 + "%", background: accent, boxShadow: "0 0 12px " + accent }}
             />
           </div>
-          {lesson.checkpoints.map((c, i) => (
-            <span
-              key={i}
-              title={"知識點檢查站 " + (i + 1)}
-              className="clip-hex absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 transition-transform group-hover:scale-125"
-              style={{
-                left: c.at * 100 + "%",
-                background: position >= c.at ? "var(--color-amber)" : "var(--color-line-2)",
-                boxShadow: position >= c.at ? "0 0 10px var(--color-amber)" : "none",
-              }}
-            />
-          ))}
+          {lesson.checkpoints.map((c, i) => {
+            const at = checkpointProgress(c.at, lesson.durationSec);
+            return (
+              <span
+                key={i}
+                title={"知識點檢查站 " + (i + 1)}
+                className="clip-hex absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 transition-transform group-hover:scale-125"
+                style={{
+                  left: at * 100 + "%",
+                  background: position >= at ? "var(--color-amber)" : "var(--color-line-2)",
+                  boxShadow: position >= at ? "0 0 10px var(--color-amber)" : "none",
+                }}
+              />
+            );
+          })}
         </div>
 
         <div className="mt-1.5 flex items-center gap-3.5">

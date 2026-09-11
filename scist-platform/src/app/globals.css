@@ -127,6 +127,11 @@ h1, h2, h3 {
   background: rgba(164, 241, 59, 0.3);
   color: #fff;
 }
+/* Windows 原生 <select> 下拉選項不會吃 Tailwind，不指定的話常常是黑底黑字 */
+select option {
+  background-color: var(--color-bg-0);
+  color: var(--color-fg);
+}
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-2) transparent;

@@ -13,6 +13,7 @@ import { getSettings } from "./settings";
 import { expireInstances } from "./ops";
 import { env } from "../env";
 import { weekStart } from "@/lib/timezone";
+import { SCHOOLS } from "@/data/schools";
 
 /* ------------------------------ XP ------------------------------ */
 export async function xpOf(userId: string) {
@@ -44,9 +45,6 @@ export async function getProfile(userId: string) {
   };
 
   const solves = await db.query.solves.findMany({ where: eq(schema.solves.userId, userId) });
-  const challengeIds = [...new Set(solves.map((s) => s.challengeId))];
-  const challenges = challengeIds.length ? await db.query.challenges.findMany({ columns: { id: true, slug: true } }) : [];
-  const slugOf = (id: string) => challenges.find((c) => c.id === id)?.slug ?? id;
 
   const hints = await db
     .select({ hintId: schema.hintUnlocks.hintId, challengeId: schema.challengeHints.challengeId })
@@ -60,13 +58,32 @@ export async function getProfile(userId: string) {
     where: and(eq(schema.instances.userId, userId), eq(schema.instances.status, "running"), gt(schema.instances.expiresAt, new Date())),
   });
 
+  // the client keys solves / hints / instances by slug, so every challenge the
+  // user touched has to be in this map — not just the ones they solved
+  const challengeIds = new Set([
+    ...solves.map((s) => s.challengeId),
+    ...hints.map((h) => h.challengeId),
+    ...instances.map((i) => i.challengeId),
+  ]);
+  const challenges = challengeIds.size ? await db.query.challenges.findMany({ columns: { id: true, slug: true } }) : [];
+  const slugOf = (id: string) => challenges.find((c) => c.id === id)?.slug ?? id;
+
   const solved: Record<string, string[]> = {};
   for (const s of solves) (solved[slugOf(s.challengeId)] ??= []).push(s.flagId);
   const revealedHints: Record<string, string[]> = {};
   for (const h of hints) (revealedHints[slugOf(h.challengeId)] ??= []).push(h.hintId);
 
   return {
-    user: { id: user.id, handle: user.handle, displayName: user.displayName, avatarUrl: user.avatarUrl, role: user.role, schoolId: user.schoolId, school: user.school?.short ?? null },
+    user: {
+      id: user.id,
+      handle: user.handle,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      schoolId: user.schoolId,
+      school: user.school?.short ?? null,
+      schoolEditCount: user.schoolEditCount ?? 0,
+    },
     hasPassword: Boolean(user.passwordHash),
     xp: await xpOf(userId),
     watched: Object.fromEntries(progress.map((p) => [keyOf(p.lessonId), p.watched])),
@@ -79,6 +96,32 @@ export async function getProfile(userId: string) {
     registeredEvents: regs.map((r) => r.eventId),
     log: log.map((e) => ({ id: e.id, kind: e.reason === "solve" ? "solve" : e.reason === "lesson" ? "lesson" : e.reason === "checkpoint" ? "checkpoint" : e.reason === "hint" ? "hint" : "rankup", label: e.label, xp: e.delta, at: e.createdAt.toISOString() })),
   };
+}
+
+export async function updateOwnProfile(userId: string, input: { displayName: string; schoolId?: string | null }) {
+  const db = await getDb();
+  const user = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
+  if (!user) throw new ApiError(404, "找不到這個帳號");
+
+  const displayName = input.displayName.trim();
+  if (!displayName) throw new ApiError(400, "暱稱不能空白");
+
+  const nextSchool = input.schoolId === undefined ? user.schoolId : input.schoolId?.trim() || null;
+  if (nextSchool && !SCHOOLS.some((s) => s.id === nextSchool)) throw new ApiError(400, "學校不在名單裡");
+
+  let schoolEditCount = user.schoolEditCount ?? 0;
+  if (nextSchool !== user.schoolId) {
+    if (user.schoolId && !nextSchool) throw new ApiError(400, "已經填過學校就不能改回未填寫");
+    if (user.schoolId && nextSchool && schoolEditCount >= 1) {
+      throw new ApiError(400, "學校只能再改一次，之後請找管理員");
+    }
+    if (user.schoolId && nextSchool) schoolEditCount += 1;
+  }
+
+  await db
+    .update(schema.users)
+    .set({ displayName, schoolId: nextSchool, schoolEditCount, lastSeenAt: new Date() })
+    .where(eq(schema.users.id, userId));
 }
 
 /* ------------------------------ lessons ------------------------------ */

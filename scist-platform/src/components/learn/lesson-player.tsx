@@ -28,6 +28,8 @@ import { Button, LinkButton, ProgressBar, DifficultyBadge } from "@/components/u
 import type { Challenge } from "@/data/challenges";
 import { lessonNeighbours, type Lesson, type Track } from "@/data/tracks";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
+import { isCallout } from "@/lib/callout";
+import { checkpointAtSec, checkpointProgress } from "@/lib/checkpoint";
 import { useCanRecordProgress } from "@/components/settings-provider";
 import { cn, formatMinutes } from "@/lib/utils";
 
@@ -57,7 +59,9 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
   const [position, setPosition] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [captions, setCaptions] = useState(!real);
+  const [captions, setCaptions] = useState(
+    !real || lesson.content.some((b) => isCallout(b) && b.text.trim()),
+  );
   const [tab, setTab] = useState<TabId>("quiz");
   const [gateIndex, setGateIndex] = useState<number | null>(null);
   const [justCompleted, setJustCompleted] = useState(false);
@@ -71,11 +75,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     (p: number) => {
       for (let i = 0; i < lesson.checkpoints.length; i++) {
         const c = lesson.checkpoints[i];
-        if (!answeredSet.has(i) && p >= c.at) return i;
+        if (!answeredSet.has(i) && p >= checkpointProgress(c.at, lesson.durationSec)) return i;
       }
       return null;
     },
-    [lesson.checkpoints, answeredSet],
+    [lesson.checkpoints, lesson.durationSec, answeredSet],
   );
 
   // stand-in playback loop
@@ -90,7 +94,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
           setPlaying(false);
           setGateIndex(gate);
           setTab("quiz");
-          return lesson.checkpoints[gate].at;
+          return checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec);
         }
         if (next >= 1) setPlaying(false);
         return next;
@@ -107,13 +111,13 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
         setPlaying(false);
         setGateIndex(gate);
         setTab("quiz");
-        setPosition(lesson.checkpoints[gate].at);
+        setPosition(checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec));
         return;
       }
       setPosition(p);
       if (p >= 0.999) setPlaying(false);
     },
-    [nextGate, lesson.checkpoints],
+    [nextGate, lesson.checkpoints, lesson.durationSec],
   );
 
   // persist watch position
@@ -238,7 +242,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             onTogglePlay={() => {
               if (gateIndex !== null) return;
               const gate = nextGate(position);
-              if (gate !== null && position >= lesson.checkpoints[gate].at) {
+              if (gate !== null) {
                 setGateIndex(gate);
                 setTab("quiz");
                 return;
@@ -248,7 +252,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             onSeek={(p) => {
               const gate = nextGate(p);
               if (gate !== null) {
-                setPosition(lesson.checkpoints[gate].at);
+                setPosition(checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec));
                 setGateIndex(gate);
                 setTab("quiz");
                 setPlaying(false);
@@ -330,8 +334,8 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                   ) : (
                     lesson.checkpoints.map((c, i) => {
                       const isAnswered = hydrated && answeredSet.has(i);
-                      const unlocked = position >= c.at || isAnswered;
-                      if (!unlocked) return <LockedCheckpoint key={i} at={c.at} />;
+                      const unlocked = position >= checkpointProgress(c.at, lesson.durationSec) || isAnswered;
+                      if (!unlocked) return <LockedCheckpoint key={i} atSec={checkpointAtSec(c.at, lesson.durationSec)} />;
                       return (
                         <CheckpointQuiz
                           key={i}

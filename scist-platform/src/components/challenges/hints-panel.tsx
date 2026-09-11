@@ -30,7 +30,7 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
     }
     setBusy(hintId);
     try {
-      const res = await api<{ text: string; cost: number }>("/api/challenges/" + challenge.slug + "/hints/" + hintId, { method: "POST" });
+      const res = await api<{ text: string; cost: number }>("/api/challenges/" + challenge.slug + "/hints", { body: { hintId } });
       setTexts((t) => ({ ...t, [hintId]: res.text }));
       reveal(challenge.slug, hintId, res.cost);
       void refreshProfile(true);

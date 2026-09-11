@@ -17,7 +17,8 @@
 | 訪客進度合併 | 第一次登入時把瀏覽器裡的檢查站、看課進度、筆記重播到帳號 | 未登入答一站再登入，`/api/me` 的 `checkpoints` 有它，XP 也加了 |
 | Flag、提示、靶機、報名、發問 | 登入者走 API（伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord）；訪客只在瀏覽器模擬 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
 | 影片 | `video-stage.tsx` 支援 YouTube IFrame API 與 Cloudflare Stream SDK；播到檢查站自動暫停，答對繼續 | 後台把一課設成 YouTube，播放器會在 30% / 60% / 90% 停下 |
-| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉非講師，導回 `/?login=admin&next=原路徑`，登入後回到原頁。角色只能由管理員指派 | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框；學員身分開 `/admin` 會看到權限不足 |
+| 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉學員，導回 `/?login=admin&next=原路徑`，登入後回到原頁。角色只能由管理員指派 | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框；學員身分開 `/admin` 會看到權限不足 |
+| 角色權限 | 助教／講師／管理員看到的後台不一樣。四個角色的能力表在 `src/lib/permissions.ts`，API 守門、側邊欄、按鈕都讀它，看得到就一定按得動 | 助教登入後 `/admin` 會落在「問答」，側邊欄只有問答與靶機；講師看不到操作紀錄與設定 |
 | 三級認證 | 條件存 `settings.certifications`，判定在 `src/lib/certifications.ts`，儀表板逐項列出還差什麼 | 後台把門檻改小，`/dashboard` 的徽章跟著亮 |
 | 每週挑戰 | `settings.weekly` 指定題目，首頁與題庫置頂；結算發前三名加分並貼 Discord，同一週不重複發 | 後台按「結算本週並公告」，看 toast 與 `xp_ledger` |
 | 公開查詢快取 | `src/server/cache.ts`，內容 60 秒、統計 30 秒，後台存檔即失效，開發環境關閉 | production build 下連開首頁兩次，第二次不打資料庫 |

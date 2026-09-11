@@ -8,6 +8,7 @@ import { ApiError } from "../auth";
 import { notifyDiscord, questionMessage } from "../services/discord";
 import { getSettings } from "./settings";
 import { env } from "../env";
+import { can } from "@/lib/permissions";
 import type { AdminQuestion } from "@/admin/types";
 import type { Question as PublicQuestion } from "@/data/questions";
 
@@ -17,7 +18,12 @@ const ROLE_LABEL: Record<string, "講師" | "助教" | "學員"> = { admin: "講
 const POST_WINDOW_MS = 10 * 60_000;
 const POST_LIMIT = 5;
 
-const isStaff = (role: string) => role === "ta" || role === "instructor" || role === "admin";
+/**
+ * 讀的是 src/lib/permissions.ts 那張表，跟後台問答頁同一套：助教以上能回覆與
+ * 採納，刪掉別人的東西要講師以上。
+ */
+const isStaff = (role: string) => can(role, "questions.answer");
+const mayModerate = (role: string) => can(role, "questions.delete");
 
 async function assertQuestionsOpen() {
   const { features } = await getSettings();
@@ -42,6 +48,7 @@ function toPublic(q: Row, viewer?: Viewer): PublicQuestion {
     body: q.body,
     author: q.authorHandle,
     createdAt: q.createdAt.toISOString(),
+    editedAt: q.editedAt?.toISOString(),
     votes: q.votes,
     voted: viewer?.questionVotes.has(q.id) || undefined,
     mine: (viewer && q.authorId === viewer.id) || undefined,
@@ -53,9 +60,11 @@ function toPublic(q: Row, viewer?: Viewer): PublicQuestion {
         role: (a.authorRole as "講師" | "助教" | "學員") ?? "學員",
         body: a.body,
         createdAt: a.createdAt.toISOString(),
+        editedAt: a.editedAt?.toISOString(),
         votes: a.votes,
         accepted: q.acceptedAnswerId === a.id || undefined,
         voted: viewer?.answerVotes.has(a.id) || undefined,
+        mine: (viewer && a.authorId === viewer.id) || undefined,
       })),
   };
 }
@@ -70,10 +79,19 @@ function toAdmin(q: Row): AdminQuestion {
     authorHandle: q.authorHandle,
     votes: q.votes,
     createdAt: q.createdAt.toISOString(),
+    editedAt: q.editedAt?.toISOString() ?? null,
     acceptedAnswerId: q.acceptedAnswerId,
     answers: [...q.answers]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((a) => ({ id: a.id, authorHandle: a.authorHandle, authorRole: a.authorRole, body: a.body, createdAt: a.createdAt.toISOString(), votes: a.votes })),
+      .map((a) => ({
+        id: a.id,
+        authorHandle: a.authorHandle,
+        authorRole: a.authorRole,
+        body: a.body,
+        createdAt: a.createdAt.toISOString(),
+        editedAt: a.editedAt?.toISOString() ?? null,
+        votes: a.votes,
+      })),
   };
 }
 
@@ -153,21 +171,87 @@ export async function createAnswer(
 }
 
 /**
- * Marks the answer that solved the thread. TAs and above can do this on any
- * question; everyone else only on their own (`actor` left out = trusted call).
+ * Marks the answer that solved the thread, or clears it when `answerId` is
+ * null — 標了最佳解答不代表討論結束，換一個或收回都可以。TAs and above can do
+ * this on any question; everyone else only on their own (`actor` left out =
+ * trusted call).
  */
-export async function acceptAnswer(questionId: string, answerId: string, actor?: { id: string; role: string }) {
+export async function acceptAnswer(questionId: string, answerId: string | null, actor?: { id: string; role: string }) {
   const db = await getDb();
   const q = await db.query.questions.findFirst({ where: eq(schema.questions.id, questionId) });
   if (!q) throw new ApiError(404, "question not found");
   if (actor && !isStaff(actor.role) && q.authorId !== actor.id) {
     throw new ApiError(403, "只有發問者本人或助教可以採納回答");
   }
-  const answer = await db.query.answers.findFirst({
-    where: and(eq(schema.answers.id, answerId), eq(schema.answers.questionId, questionId)),
-  });
-  if (!answer) throw new ApiError(404, "answer not found");
+  if (answerId) {
+    const answer = await db.query.answers.findFirst({
+      where: and(eq(schema.answers.id, answerId), eq(schema.answers.questionId, questionId)),
+    });
+    if (!answer) throw new ApiError(404, "answer not found");
+  }
   await db.update(schema.questions).set({ acceptedAnswerId: answerId }).where(eq(schema.questions.id, questionId));
+}
+
+/* --------------------------- 編輯與刪除自己的內容 --------------------------- */
+/**
+ * 只有作者能改自己寫的字。助教與講師能刪、能採納，但不能替別人改內容，
+ * 不然討論串會變成沒人知道原本寫了什麼。改過會留 editedAt。
+ */
+export async function updateQuestion(actor: { id: string; role: string }, questionId: string, input: { title?: string; body?: string }) {
+  const db = await getDb();
+  const q = await db.query.questions.findFirst({ where: eq(schema.questions.id, questionId) });
+  if (!q) throw new ApiError(404, "question not found");
+  if (q.authorId !== actor.id) throw new ApiError(403, "只能編輯自己發的問題");
+
+  const title = input.title?.trim();
+  const body = input.body?.trim();
+  if (input.title !== undefined && !title) throw new ApiError(400, "標題不能空白");
+
+  await db
+    .update(schema.questions)
+    .set({ title: (title ?? q.title).slice(0, 200), body: (body ?? q.body).slice(0, 4000), editedAt: new Date() })
+    .where(eq(schema.questions.id, questionId));
+}
+
+export async function updateAnswer(actor: { id: string; role: string }, answerId: string, body: string) {
+  const db = await getDb();
+  const a = await db.query.answers.findFirst({ where: eq(schema.answers.id, answerId) });
+  if (!a) throw new ApiError(404, "answer not found");
+  if (a.authorId !== actor.id) throw new ApiError(403, "只能編輯自己的回覆");
+  const next = body.trim();
+  if (!next) throw new ApiError(400, "回覆不能空白");
+  await db.update(schema.answers).set({ body: next.slice(0, 4000), editedAt: new Date() }).where(eq(schema.answers.id, answerId));
+}
+
+/**
+ * 作者要收回整串問題，只能在還沒有別人回覆的時候——已經有人花時間回答了，
+ * 一鍵刪掉會把別人的貢獻一起帶走。之後想撤只能請助教處理。
+ */
+export async function deleteOwnQuestion(actor: { id: string; role: string }, questionId: string) {
+  const db = await getDb();
+  const q = await db.query.questions.findFirst({ where: eq(schema.questions.id, questionId), with: { answers: true } });
+  if (!q) throw new ApiError(404, "question not found");
+  if (!mayModerate(actor.role)) {
+    if (q.authorId !== actor.id) throw new ApiError(403, "只能刪自己發的問題");
+    if (q.answers.some((a) => a.authorId !== actor.id)) {
+      throw new ApiError(400, "已經有人回覆了，不能整串刪掉。要撤下請找助教或講師。");
+    }
+  }
+  await db.delete(schema.questions).where(eq(schema.questions.id, questionId));
+}
+
+/** 刪掉被採納的那則回覆時，順手把最佳解答的標記清掉，不然會指向不存在的 id */
+export async function deleteAnswer(actor: { id: string; role: string }, answerId: string) {
+  const db = await getDb();
+  const a = await db.query.answers.findFirst({ where: eq(schema.answers.id, answerId) });
+  if (!a) throw new ApiError(404, "answer not found");
+  if (!mayModerate(actor.role) && a.authorId !== actor.id) throw new ApiError(403, "只能刪自己的回覆");
+
+  await db
+    .update(schema.questions)
+    .set({ acceptedAnswerId: null })
+    .where(and(eq(schema.questions.id, a.questionId), eq(schema.questions.acceptedAnswerId, answerId)));
+  await db.delete(schema.answers).where(eq(schema.answers.id, answerId));
 }
 
 /* ------------------------------ votes ------------------------------ */

@@ -19,6 +19,7 @@ import { SCHOOLS } from "../../data/schools";
 import { PLAYERS } from "../../data/players";
 import { DEFAULT_SETTINGS } from "../../lib/settings-defaults";
 import { seeded } from "../../lib/utils";
+import { checkpointAtSec } from "../../lib/checkpoint";
 
 export async function isDatabaseEmpty(db: Db) {
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.tracks);
@@ -93,7 +94,7 @@ export async function seedDatabase(db: Db, opts: { force?: boolean } = {}): Prom
           xp: l.xp,
           videoProvider: "none" as const,
           content: l.content,
-          checkpoints: l.checkpoints,
+          checkpoints: l.checkpoints.map((c) => ({ ...c, at: checkpointAtSec(c.at, l.durationSec) })),
           labSlug: l.labSlug ?? null,
           sortOrder: li,
           status: "published" as const,

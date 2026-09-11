@@ -42,7 +42,7 @@ BOOTSTRAP_ADMIN_PASSWORD=至少8個字
 
 `ENABLE_DEV_LOGIN=1` 才會打開舊的選角色後門，正式站不要開。
 
-驗收：註冊一個學員 → 打不開 `/admin`；再用管理員把該帳號改成講師 → 重新整理後打得開。
+驗收：註冊一個學員 → 打不開 `/admin`；再用管理員把該帳號改成講師 → 重新整理後打得開。改成助教則會落在「問答」，側邊欄只有問答與靶機環境。各角色能做什麼見 [ARCHITECTURE.md](ARCHITECTURE.md) 的角色能力表。
 
 ## 2.1 Discord 登入（可選）— `src/app/api/auth/discord/*`
 

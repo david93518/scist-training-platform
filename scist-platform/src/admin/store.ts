@@ -165,6 +165,7 @@ export function buildSeed(): AdminData {
     authorHandle: q.author,
     votes: q.votes,
     createdAt: q.createdAt,
+    editedAt: null,
     acceptedAnswerId: q.answers.find((a) => a.accepted)?.id ?? null,
     answers: q.answers.map((a) => ({
       id: a.id,
@@ -172,6 +173,7 @@ export function buildSeed(): AdminData {
       authorRole: a.role,
       body: a.body,
       createdAt: a.createdAt,
+      editedAt: null,
       votes: a.votes,
     })),
   }));

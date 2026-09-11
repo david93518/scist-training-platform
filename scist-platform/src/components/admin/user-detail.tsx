@@ -7,13 +7,13 @@ import type { Role, XpReason } from "@/admin/types";
 import { schoolById } from "@/data/schools";
 import { Button, HexAvatar, ProgressBar } from "@/components/ui/primitives";
 import { Drawer, Field, Input, Select, useAsync, useToast } from "@/components/admin/ui";
-import { ROLE_COLOR, ROLE_LABEL } from "@/components/admin/admin-shell";
 import { nextRank, rankFor } from "@/lib/xp";
 import { useRanks } from "@/components/settings-provider";
+import { can, ROLE_COLOR, ROLE_LABEL, ROLES } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn, formatDate, formatNumber, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 
-const ROLES: Role[] = ["student", "ta", "instructor", "admin"];
 const REASON: Record<XpReason, { label: string; color: string }> = {
   checkpoint: { label: "檢查站", color: "#4da3ff" },
   lesson: { label: "完課", color: "#3ee8d5" },
@@ -47,6 +47,7 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
   const [tab, setTab] = useState<"ledger" | "solves" | "lessons">("ledger");
 
   const ranks = useRanks();
+  const manage = can(useProgress((s) => s.role), "users.manage");
   const d = detail.data;
   const u = d?.user;
   const rank = u ? rankFor(u.xp, ranks) : null;
@@ -122,8 +123,15 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
             <Stat label="助教貢獻" value={String(u.answers)} sub={u.answers ? "則回答 · " + u.accepted + " 則被採納" : "還沒回答過"} />
           </div>
 
+          {!manage ? (
+            <p className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-[12.5px] leading-relaxed text-fg-3">
+              角色、停權、XP 調整與重設密碼只有管理員能做，這裡只顯示這位學員的紀錄。
+            </p>
+          ) : null}
+
+          {manage ? (
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Field label="角色" hint="助教能回答與採納；講師能上架；管理員能改設定與角色">
+            <Field label="角色" hint="助教能處理問答與靶機；講師能上架內容；管理員能改設定與角色">
               <Select
                 value={u.role}
                 onChange={async (e) => {
@@ -164,7 +172,9 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
               {u.bannedAt ? "解除停權" : "停權"}
             </Button>
           </div>
+          ) : null}
 
+          {manage ? (
           <form onSubmit={adjust} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
             <div className="mb-3 flex items-center gap-2 text-[13.5px] font-bold">
               <Zap size={14} className="text-accent" />
@@ -188,7 +198,9 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
             </div>
             <p className="mt-2 text-[11.5px] text-fg-3">走 XP 流水帳，排行榜會一起變；這個操作會留在操作紀錄裡。</p>
           </form>
+          ) : null}
 
+          {manage ? (
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -221,6 +233,7 @@ export function UserDetailDrawer({ userId, onClose, onChanged }: { userId: strin
             </div>
             <p className="mt-2 text-[11.5px] text-fg-3">對方下次請用這組新密碼登入。這個操作會留在操作紀錄裡。</p>
           </form>
+          ) : null}
 
           <div>
             <div className="mb-3 flex w-fit rounded-lg border border-white/[0.08] bg-bg-0 p-0.5">

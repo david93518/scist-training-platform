@@ -6,14 +6,21 @@ import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { ApiError } from "../auth";
 import * as instancer from "../services/instancer";
-import type { AdminAnalytics, AdminInstance, AuditAction, AuditEntry } from "@/admin/types";
+import type { AdminAnalytics, AdminInstance, AuditAction, AuditChange, AuditEntry } from "@/admin/types";
 import { CATEGORY_META, type Category } from "@/data/challenges";
 import { schoolById } from "@/data/schools";
 
 /* ------------------------------ audit ------------------------------ */
-export async function audit(actorId: string | null, action: AuditAction, entity: string, entityId: string | null, label: string) {
+export async function audit(
+  actorId: string | null,
+  action: AuditAction,
+  entity: string,
+  entityId: string | null,
+  label: string,
+  changes: AuditChange[] = [],
+) {
   const db = await getDb();
-  await db.insert(schema.auditLog).values({ actorId, action, entity, entityId, detail: { label } });
+  await db.insert(schema.auditLog).values({ actorId, action, entity, entityId, detail: { label, changes } });
 }
 
 export async function listAudit(limit = 200): Promise<AuditEntry[]> {
@@ -32,15 +39,20 @@ export async function listAudit(limit = 200): Promise<AuditEntry[]> {
     .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
     .orderBy(desc(schema.auditLog.createdAt))
     .limit(limit);
-  return rows.map((r) => ({
-    id: r.id,
-    actorHandle: r.handle ?? "system",
-    action: r.action as AuditAction,
-    entity: r.entity,
-    entityId: r.entityId,
-    label: String((r.detail as { label?: unknown } | null)?.label ?? ""),
-    at: r.at.toISOString(),
-  }));
+  return rows.map((r) => {
+    const detail = r.detail as { label?: unknown; changes?: unknown } | null;
+    return {
+      id: r.id,
+      actorHandle: r.handle ?? "system",
+      action: r.action as AuditAction,
+      entity: r.entity,
+      entityId: r.entityId,
+      label: String(detail?.label ?? ""),
+      // 舊資料只有 label，沒有 changes
+      changes: Array.isArray(detail?.changes) ? (detail.changes as AuditChange[]) : [],
+      at: r.at.toISOString(),
+    };
+  });
 }
 
 /* ------------------------------ instances ------------------------------ */

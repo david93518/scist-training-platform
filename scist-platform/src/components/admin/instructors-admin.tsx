@@ -9,6 +9,8 @@ import { CATEGORY_META, type Category } from "@/data/challenges";
 import { Icon } from "@/components/ui/icon";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
 import { ConfirmDelete, Drawer, Field, Input, PageTitle, Select, TagInput, Textarea, ToastHost, useAsync, useToast } from "@/components/admin/ui";
+import { can } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn } from "@/lib/utils";
 
 const COLORS = ["#a4f13b", "#4da3ff", "#3ee8d5", "#b983ff", "#ff6fb5", "#ffb84d", "#ff5e5e"];
@@ -29,6 +31,8 @@ export function InstructorsAdmin({ editId }: { editId?: string }) {
   const [editing, setEditing] = useState<AdminInstructor | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [saving, setSaving] = useState(false);
+  // 移除講師會把路徑、題目、活動上的欄位清空，只有管理員能做
+  const mayDelete = can(useProgress((s) => s.role), "instructor.delete");
 
   // ?edit=<id> opens the drawer once the roster is loaded; closing it wins after that
   const current = editing ?? (editId && !dismissed ? (list.data?.find((i) => i.id === editId) ?? null) : null);
@@ -145,7 +149,7 @@ export function InstructorsAdmin({ editId }: { editId?: string }) {
         footer={
           current ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              {!isNew ? (
+              {!isNew && mayDelete ? (
                 <ConfirmDelete
                   onConfirm={async () => {
                     await api.instructors.remove(current.id);

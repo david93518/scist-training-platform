@@ -1,11 +1,11 @@
 /**
  * Server-side gate for the admin console. The API already checks the session
- * on every request; this keeps the HTML shell away from anyone who is not an
- * instructor or admin.
+ * on every request; this keeps the HTML shell away from anyone whose role
+ * can't use that page — the page ↔ 能力對照表在 src/lib/permissions.ts，
+ * 側邊欄讀的是同一張表。
  *
- * Anyone else is sent to the home page with the login dialog open and a
- * `next` parameter, so a successful login lands them back where they were
- * going instead of leaving them on the front page.
+ * 沒登入或角色完全進不了後台的，送回首頁並開登入框，帶 `next` 讓他登入後
+ * 直接回到原本要去的地方。
  *
  * /admin?as=… 只有 ENABLE_DEV_LOGIN=1 且非 production 才會簽開發 session。
  * NEXT_PUBLIC_ADMIN_API=local 關掉這道門，因為那時後台走瀏覽器儲存、可能沒有 session。
@@ -13,8 +13,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { SESSION_COOKIE, sessionSecretBytes } from "@/server/session-secret";
+import { can, landingFor, ROLES } from "@/lib/permissions";
 
-const ROLES = new Set(["student", "ta", "instructor", "admin"]);
+const ROLE_NAMES = new Set<string>(ROLES);
 
 async function roleFromCookie(token: string | undefined) {
   if (!token) return null;
@@ -34,7 +35,7 @@ export async function proxy(req: NextRequest) {
   const role = await roleFromCookie(req.cookies.get(SESSION_COOKIE)?.value);
   const devLoginOn = process.env.NODE_ENV !== "production" && process.env.ENABLE_DEV_LOGIN === "1";
 
-  if (as && ROLES.has(as) && devLoginOn) {
+  if (as && ROLE_NAMES.has(as) && devLoginOn) {
     const back = new URL(url);
     back.searchParams.delete("as");
     const dev = new URL("/api/auth/dev", url);
@@ -44,7 +45,15 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(dev);
   }
 
-  if (role === "instructor" || role === "admin") return NextResponse.next();
+  const landing = landingFor(role);
+  if (landing) {
+    // 進不了總覽的角色（助教）直接帶到他的第一頁；其他頁面交給 AdminShell
+    // 畫「權限不足」的說明，內容一樣拿不到，因為 API 那邊也是同一張表在擋。
+    if (url.pathname === "/admin" && !can(role, "overview.read")) {
+      return NextResponse.redirect(new URL(landing, url));
+    }
+    return NextResponse.next();
+  }
 
   const home = new URL("/", url);
   home.searchParams.set("login", "admin");

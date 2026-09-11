@@ -29,6 +29,15 @@ export const SCHOOLS: School[] = [
 
 export const REGIONS = ["嘉義", "台南", "高雄", "屏東"] as const;
 
-export function schoolById(id: string) {
+export function schoolById(id: string | null | undefined) {
+  if (!id) return undefined;
   return SCHOOLS.find((s) => s.id === id);
+}
+
+export function schoolName(id: string | null | undefined, empty = "未填寫") {
+  return schoolById(id)?.name ?? empty;
+}
+
+export function schoolShort(id: string | null | undefined, empty = "未填寫") {
+  return schoolById(id)?.short ?? empty;
 }

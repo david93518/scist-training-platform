@@ -24,7 +24,7 @@ pnpm dev
 ```
 
 - 前台：http://localhost:3000
-- 後台：http://localhost:3000/admin（要講師或管理員帳號；沒權限會被帶回首頁登入框）
+- 後台：http://localhost:3000/admin（要助教以上；沒權限會被帶回首頁登入框。各角色看到的功能不同，見下）
 - 登入：右上角「登入」→ 註冊或登入。註冊預設是學員；資料庫還沒有管理員時，**第一個註冊的人會成為管理員**。之後角色只能由管理員在「學員與角色」指派，不能自己選。
 
 不需要任何環境變數就能本機開發。沒設定 `DATABASE_URL` 時資料庫是內嵌的 PGlite，存在 `.data/pglite`，空資料庫會自動灌入示範內容（那些示範帳號沒有密碼，不能登入）。外部服務全部沒設定時走模擬模式，畫面流程照樣能走完。要接真服務時複製 `.env.example` 為 `.env.local` 填入。正式站建議設 `BOOTSTRAP_ADMIN_HANDLE` 與 `BOOTSTRAP_ADMIN_PASSWORD`，不要賭第一個註冊的人。
@@ -95,10 +95,12 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 | `/admin/questions` | 問答回覆與採納 |
 | `/admin/instances` | 靶機環境：運行中的容器、到期倒數、關閉 |
 | `/admin/analytics` | 數據：12 週趨勢、學習漏斗、完課率、解題率、18 校參與 |
-| `/admin/audit` | 操作紀錄：誰在什麼時候改了什麼 |
+| `/admin/audit` | 操作紀錄：誰在什麼時候改了什麼、哪些欄位改成什麼 |
 | `/admin/settings` | 站點文案、XP 規則、階級門檻、整合狀態、CTFd 匯入、匯出 |
 
 所有前台頁面每次請求都從資料庫讀，後台改完重新整理就看得到。
+
+後台不是每個角色都看得到全部。**助教**只有問答與靶機環境，**講師**多了內容、學員名單（唯讀）與數據，**管理員**才有角色管理、設定與操作紀錄。這張表定義在 `src/lib/permissions.ts`，API 守門、側邊欄與按鈕讀的都是它，完整矩陣見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 互動課程播放器
 
@@ -132,7 +134,7 @@ flag 只以 SHA-256 存放，前端與資料庫都沒有明文。登入者的提
 | --- | --- | --- |
 | 開關 | 不設定 | `.env.local` 設 `NEXT_PUBLIC_ADMIN_API=local` |
 | 資料在哪 | 資料庫（透過 `/api/admin/*`） | 這台瀏覽器的 localStorage |
-| 需要登入 | 講師以上（`src/proxy.ts` 在伺服器端擋） | 不用 |
+| 需要登入 | 助教以上（`src/proxy.ts` 在伺服器端擋） | 不用 |
 | 用途 | 真正上架內容 | 看畫面、討論 UX |
 
 ## 內容怎麼改

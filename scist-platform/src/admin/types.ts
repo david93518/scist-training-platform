@@ -149,6 +149,8 @@ export interface AdminAnswer {
   authorRole: string;
   body: string;
   createdAt: string;
+  /** 作者改過的時間；沒改過是 null */
+  editedAt: string | null;
   votes: number;
 }
 
@@ -161,6 +163,7 @@ export interface AdminQuestion {
   authorHandle: string;
   votes: number;
   createdAt: string;
+  editedAt: string | null;
   acceptedAnswerId: string | null;
   answers: AdminAnswer[];
 }
@@ -260,6 +263,15 @@ export interface AdminInstance {
 
 export type AuditAction = "save" | "delete" | "role" | "ban" | "unban" | "xp" | "kill" | "import" | "settings" | "answer" | "accept" | "reorder" | "password";
 
+/** 一個欄位的改前改後，值都已經格式化成人看得懂的字串 */
+export interface AuditChange {
+  /** 欄位鍵，設定類會是 site.name 這種路徑 */
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
 export interface AuditEntry {
   id: string;
   actorHandle: string;
@@ -268,6 +280,8 @@ export interface AuditEntry {
   entity: string;
   entityId: string | null;
   label: string;
+  /** 有逐欄位明細時才有；停權、關靶機這種沒有欄位可比的就是空的 */
+  changes: AuditChange[];
   at: string;
 }
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, X, Zap, Lock, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatTimecode } from "@/lib/checkpoint";
 import type { Checkpoint } from "@/data/tracks";
 
 export function CheckpointQuiz({
@@ -107,12 +108,12 @@ export function CheckpointQuiz({
   );
 }
 
-export function LockedCheckpoint({ at }: { at: number }) {
+export function LockedCheckpoint({ atSec }: { atSec: number }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line py-8 text-center">
       <Lock size={18} className="text-fg-3" />
       <p className="text-[13px] text-fg-3">
-        影片播放到 {Math.round(at * 100)}% 後解鎖
+        影片播放到 {formatTimecode(atSec)} 後解鎖
       </p>
     </div>
   );

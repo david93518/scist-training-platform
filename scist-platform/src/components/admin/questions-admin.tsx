@@ -7,7 +7,7 @@ import { getAdminApi } from "@/admin/api";
 import type { AdminQuestion } from "@/admin/types";
 import { Button, HexAvatar } from "@/components/ui/primitives";
 import { ConfirmDelete, PageTitle, Textarea, ToastHost, useAsync, useToast } from "@/components/admin/ui";
-import { ROLE_LABEL } from "@/components/admin/admin-shell";
+import { can, ROLE_LABEL, type Role } from "@/lib/permissions";
 import { useProgress } from "@/store/progress";
 import { cn, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
@@ -22,7 +22,8 @@ export function QuestionsAdmin() {
   const list = useAsync(() => api.questions.list());
   const now = useNow(60_000);
   const handle = useProgress((s) => s.handle);
-  const role = useProgress((s) => s.role);
+  const role = useProgress((s) => s.role) as Role;
+  const mayDelete = can(role, "questions.delete");
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
@@ -85,19 +86,22 @@ export function QuestionsAdmin() {
                 <div className="mt-2 flex items-center gap-3 font-mono text-[11px] text-fg-3">
                   <span className="text-fg-2">{q.authorHandle}</span>
                   <span>{relativeTime(q.createdAt, now)}</span>
+                  {q.editedAt ? <span>已編輯</span> : null}
                   <span className="flex items-center gap-1">
                     <ThumbsUp size={10} />
                     {q.votes}
                   </span>
                 </div>
               </div>
-              <ConfirmDelete
-                onConfirm={async () => {
-                  await api.questions.remove(q.id);
-                  await list.reload();
-                  toast("已刪除");
-                }}
-              />
+              {mayDelete ? (
+                <ConfirmDelete
+                  onConfirm={async () => {
+                    await api.questions.remove(q.id);
+                    await list.reload();
+                    toast("已刪除");
+                  }}
+                />
+              ) : null}
             </div>
 
             {q.answers.length > 0 ? (
@@ -110,22 +114,22 @@ export function QuestionsAdmin() {
                         <span className="font-mono text-[12.5px] font-bold">{a.authorHandle}</span>
                         <span className="rounded border border-white/[0.08] px-1.5 py-px font-mono text-[9.5px] text-fg-3">{a.authorRole}</span>
                         <span className="font-mono text-[10.5px] text-fg-3">{relativeTime(a.createdAt, now)}</span>
+                        {a.editedAt ? <span className="font-mono text-[10.5px] text-fg-3">已編輯</span> : null}
                         {q.acceptedAnswerId === a.id ? (
                           <span className="flex items-center gap-1 font-mono text-[10px] text-accent">
                             <Check size={10} strokeWidth={3} />
                             最佳解答
                           </span>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              await api.questions.accept(q.id, a.id);
-                              await list.reload();
-                            }}
-                            className="font-mono text-[10px] text-fg-3 hover:text-accent"
-                          >
-                            標為最佳解答
-                          </button>
-                        )}
+                        ) : null}
+                        <button
+                          onClick={async () => {
+                            await api.questions.accept(q.id, q.acceptedAnswerId === a.id ? null : a.id);
+                            await list.reload();
+                          }}
+                          className="font-mono text-[10px] text-fg-3 hover:text-accent"
+                        >
+                          {q.acceptedAnswerId === a.id ? "取消最佳解答" : "標為最佳解答"}
+                        </button>
                       </div>
                       <p className="mt-1 text-[13px] leading-relaxed text-fg-2">{a.body}</p>
                     </div>

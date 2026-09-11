@@ -5,7 +5,7 @@ import { Trophy, Flame, School, Zap } from "lucide-react";
 import { PlayerRow, RankNumber } from "@/components/leaderboard/player-row";
 import { HexAvatar, ProgressBar } from "@/components/ui/primitives";
 import type { Player, SchoolStanding } from "@/data/players";
-import { schoolById } from "@/data/schools";
+import { schoolById, schoolShort } from "@/data/schools";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
 import { useRanks } from "@/components/settings-provider";
 import { useProgress, useHydrated } from "@/store/progress";
@@ -138,7 +138,7 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
                 {hydrated ? handle : "guest"}
               </div>
               <div className="text-[12px] text-fg-3">
-                {schoolById(hydrated ? schoolId : "tnfsh")?.short} ·{" "}
+                {schoolShort(hydrated ? schoolId : "")} ·{" "}
                 <span style={{ color: rank.color }}>{rank.name}</span>
               </div>
             </div>

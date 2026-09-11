@@ -68,6 +68,8 @@ export const users = pgTable(
     passwordHash: text("password_hash"),
     role: userRole("role").notNull().default("student"),
     schoolId: text("school_id").references(() => schools.id, { onDelete: "set null" }),
+    /** 從「已有學校」改成另一間時加一。第一次補填不算。滿 1 就不能自己改。 */
+    schoolEditCount: integer("school_edit_count").notNull().default(0),
     bio: text("bio"),
     createdAt: createdAt(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
@@ -293,6 +295,8 @@ export const questions = pgTable(
     votes: integer("votes").notNull().default(0),
     acceptedAnswerId: text("accepted_answer_id"),
     createdAt: createdAt(),
+    /** 作者改過內容的時間；沒改過是 null，前台靠它顯示「已編輯」 */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
   },
   (t) => [index("questions_ref_idx").on(t.scope, t.refId)],
 );
@@ -310,6 +314,7 @@ export const answers = pgTable(
     body: text("body").notNull(),
     votes: integer("votes").notNull().default(0),
     createdAt: createdAt(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
   },
   (t) => [index("answers_question_idx").on(t.questionId)],
 );
