@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock, Ban } from "lucide-react";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
@@ -28,10 +29,11 @@ interface LoginIntent {
   next: string | null;
 }
 
-function readIntent(): LoginIntent {
-  if (typeof window === "undefined") return { open: false, reason: null, next: null };
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has("login")) return { open: false, reason: null, next: null };
+const CLOSED: LoginIntent = { open: false, reason: null, next: null };
+
+/** Reads the gate's `?login=…&next=…` out of the current query string. */
+function readIntent(params: Pick<URLSearchParams, "has" | "get">): LoginIntent {
+  if (!params.has("login")) return CLOSED;
   const next = safeNextPath(params.get("next"));
   const reason = params.get("login");
   return { open: true, reason: reason === "admin" || (next?.startsWith("/admin") ?? false) ? "admin" : reason, next };
@@ -352,7 +354,20 @@ export function LoginMenu() {
   // 用到一半被停權時 /api/me 會回這個旗標，直接把說明彈出來
   const banned = useProgress((s) => s.banned);
   const dismissBanned = useProgress((s) => s.dismissBanned);
-  const [intent, setIntent] = useState<LoginIntent>(readIntent);
+  const searchParams = useSearchParams();
+  /**
+   * The gate in src/proxy.ts answers a gated page with a redirect to
+   * /?login=1&next=… . Clicking a link is a client-side navigation, so this
+   * component never unmounts — reading the query once at mount meant the
+   * dialog only appeared on a full page load. Derive it from the live search
+   * params instead, and remember which query string the reader dismissed so
+   * closing it sticks without re-opening on the next render.
+   */
+  const urlKey = searchParams.toString();
+  const urlIntent = useMemo(() => readIntent(searchParams), [searchParams]);
+  const [manual, setManual] = useState<LoginIntent | null>(null);
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  const intent: LoginIntent = manual ?? (urlIntent.open && dismissedKey !== urlKey ? urlIntent : CLOSED);
   const [menu, setMenu] = useState(false);
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
@@ -362,18 +377,19 @@ export function LoginMenu() {
   useEffect(() => {
     const onRequest = (e: Event) => {
       const d = (e as CustomEvent<{ next: string | null; reason: string | null }>).detail;
-      setIntent({ open: true, reason: d.reason ?? (d.next?.startsWith("/admin") ? "admin" : null), next: d.next });
+      setManual({ open: true, reason: d.reason ?? (d.next?.startsWith("/admin") ? "admin" : null), next: d.next });
     };
     window.addEventListener(LOGIN_EVENT, onRequest);
     return () => window.removeEventListener(LOGIN_EVENT, onRequest);
   }, []);
 
   const close = () => {
-    setIntent({ open: false, reason: null, next: null });
+    setManual(null);
+    setDismissedKey(urlKey);
     dismissBanned();
     clearIntentFromUrl();
   };
-  const openPlain = () => setIntent({ open: true, reason: null, next: null });
+  const openPlain = () => setManual({ open: true, reason: null, next: null });
 
   if (!hydrated) return <span className="h-10 w-24" />;
 
