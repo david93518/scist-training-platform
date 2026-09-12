@@ -256,6 +256,12 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
             <ArrowRight size={15} />
           </span>
         </Link>
+      ) : !ready ? (
+        /* profile still loading: saying "all done" here would be a lie to a new learner */
+        <div className="card flex items-center gap-4 p-6" aria-hidden="true">
+          <span className="clip-hex h-12 w-12 animate-pulse-soft bg-bg-4" />
+          <span className="h-5 w-64 animate-pulse-soft rounded-md bg-bg-4" />
+        </div>
       ) : (
         <div className="card flex items-center gap-3 p-6">
           <Check size={18} className="text-accent" />
@@ -313,7 +319,14 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
             <span className="text-[14px] font-bold">你的紀錄</span>
           </div>
 
-          {!ready || log.length === 0 ? (
+          {!ready ? (
+            /* a returning learner must not be told "no records yet" while /api/me is in flight */
+            <div className="flex flex-1 flex-col gap-2.5 py-2" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <span key={i} className="h-8 w-full animate-pulse-soft rounded-md bg-bg-4" />
+              ))}
+            </div>
+          ) : log.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
               <Zap size={20} className="text-fg-3" />
               <p className="text-[13px] text-fg-3">

@@ -9,12 +9,11 @@ import { SCHOOLS } from "@/data/schools";
 import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
 import { api } from "@/lib/api";
 import { bannedNotice } from "@/lib/ban-notice";
+import { safeNextPath } from "@/lib/safe-next";
 import { can, ROLE_LABEL } from "@/lib/permissions";
 import { rankFor } from "@/lib/xp";
-import { useRanks, useSettings } from "@/components/settings-provider";
+import { useRanks, useRuntimeFlags, useSettings } from "@/components/settings-provider";
 import { formatNumber } from "@/lib/utils";
-
-const DISCORD_READY = process.env.NEXT_PUBLIC_DISCORD_LOGIN === "1";
 
 /**
  * Where the dialog was asked to send the user afterwards. The admin gate
@@ -33,8 +32,7 @@ function readIntent(): LoginIntent {
   if (typeof window === "undefined") return { open: false, reason: null, next: null };
   const params = new URLSearchParams(window.location.search);
   if (!params.has("login")) return { open: false, reason: null, next: null };
-  const rawNext = params.get("next");
-  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
+  const next = safeNextPath(params.get("next"));
   const reason = params.get("login");
   return { open: true, reason: reason === "admin" || (next?.startsWith("/admin") ?? false) ? "admin" : reason, next };
 }
@@ -58,8 +56,7 @@ const LOGIN_EVENT = "scist:login";
  */
 export function requestLogin(next?: string | null, reason: string | null = null) {
   if (typeof window === "undefined") return;
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-  window.dispatchEvent(new CustomEvent(LOGIN_EVENT, { detail: { next: safeNext, reason } }));
+  window.dispatchEvent(new CustomEvent(LOGIN_EVENT, { detail: { next: safeNextPath(next), reason } }));
 }
 
 function IconDiscord({ size = 16 }: { size?: number }) {
@@ -71,8 +68,8 @@ function IconDiscord({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Login dialog. Account + password is the real login.
- * Discord is optional when NEXT_PUBLIC_DISCORD_LOGIN=1.
+ * Login dialog. Account + password is the real login. The Discord button
+ * appears whenever the server has DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.
  */
 export function LoginDialog({ open, onClose, next, reason }: { open: boolean; onClose: () => void; next?: string | null; reason?: string | null }) {
   if (!open) return null;
@@ -87,6 +84,8 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
   const authenticated = useProgress((s) => s.authenticated);
   const logout = useProgress((s) => s.logout);
 
+  // 有沒有接 Discord 由伺服器決定，不用再記一個 NEXT_PUBLIC_ 變數
+  const discordReady = useRuntimeFlags().discordLogin;
   const forAdmin = reason === "admin";
   const forBanned = reason === "banned";
   const canAdmin = can(role, "admin.enter");
@@ -306,7 +305,7 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
             </>
           )}
 
-          {DISCORD_READY && !roleTooLow ? (
+          {discordReady && !roleTooLow ? (
             <>
               <div className="my-5 flex items-center gap-3">
                 <span className="h-px flex-1 bg-white/[0.08]" />

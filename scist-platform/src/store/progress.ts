@@ -30,6 +30,14 @@ export interface ActivityEntry {
 
 export type Role = "student" | "ta" | "instructor" | "admin";
 
+/** What POST /api/progress returns for a checkpoint answer. */
+export interface CheckpointResult {
+  correct: boolean;
+  awarded: number;
+  explain?: string;
+  checkpointsDone: number[];
+}
+
 export interface InstanceInfo {
   startedAt: number;
   host?: string | null;
@@ -94,7 +102,8 @@ interface ProgressState {
 
   setWatched: (key: LessonKey, value: number) => void;
   completeLesson: (key: LessonKey, xp: number, title: string) => void;
-  answerCheckpoint: (key: LessonKey, index: number, xp: number) => void;
+  /** Sends the pick to the server, which decides. Returns its verdict. */
+  answerCheckpoint: (key: LessonKey, index: number, choice: number) => Promise<CheckpointResult>;
   setNote: (key: LessonKey, note: string) => void;
   solveFlag: (slug: string, flagId: string, xp: number, name: string) => void;
   revealHint: (slug: string, hintId: string, cost: number) => void;
@@ -243,16 +252,20 @@ export const useProgress = create<ProgressState>()(
         mirror(() => api("/api/progress", { body: { action: "complete", ...split(key) } }));
       },
 
-      answerCheckpoint: (key, index, xp) => {
-        if (!get().authenticated) return;
-        const done = get().checkpoints[key] ?? [];
-        if (done.includes(index)) return;
-        set((s) => ({
-          checkpoints: { ...s.checkpoints, [key]: [...done, index] },
-          xp: s.xp + xp,
-          log: [entry("checkpoint", "答對知識點檢查站", xp), ...s.log].slice(0, 60),
-        }));
-        mirror(() => api("/api/progress", { body: { action: "checkpoint", ...split(key), index } }));
+      answerCheckpoint: async (key, index, choice) => {
+        if (!get().authenticated) throw new Error("請先登入");
+        const res = await api<CheckpointResult>("/api/progress", {
+          body: { action: "checkpoint", ...split(key), index, choice },
+        });
+        if (res.correct) {
+          set((s) => ({
+            checkpoints: { ...s.checkpoints, [key]: res.checkpointsDone },
+            xp: s.xp + res.awarded,
+            log: res.awarded > 0 ? [entry("checkpoint", "答對知識點檢查站", res.awarded), ...s.log].slice(0, 60) : s.log,
+          }));
+          scheduleRefresh();
+        }
+        return res;
       },
 
       setNote: (key, note) => {

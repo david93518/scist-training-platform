@@ -37,7 +37,20 @@ type TabId = "quiz" | "lab" | "notes" | "qa";
 
 const TICK_MS = 250;
 
-export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: Track; lesson: Lesson; lab?: Challenge; video?: LessonVideo }) {
+export function LessonPlayer({
+  track,
+  lesson,
+  lab,
+  video = NO_VIDEO,
+  revealed = {},
+}: {
+  track: Track;
+  lesson: Lesson;
+  lab?: Challenge;
+  video?: LessonVideo;
+  /** checkpoints this learner already passed: index → answer + explanation */
+  revealed?: Record<number, { answer: number; explain: string }>;
+}) {
   const key = lessonKey(track.slug, lesson.slug);
   const hydrated = useHydrated();
   // a real recording drives the clock; the stand-in ticks on its own
@@ -127,9 +140,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     return () => clearTimeout(id);
   }, [position, key, hydrated, setWatched]);
 
-  const allChecked =
-    lesson.checkpoints.length > 0 &&
-    lesson.checkpoints.every((_, i) => answeredSet.has(i));
+  // every() is already true for a lesson with no checkpoints, and that is the
+  // right answer: a 觀念課 has nothing to answer, so it must still be completable.
+  // Requiring length > 0 used to lock those lessons forever, with the panel
+  // saying "直接看完就好" next to a disabled button.
+  const allChecked = lesson.checkpoints.every((_, i) => answeredSet.has(i));
   // reaching the last checkpoint already requires watching most of the lesson
   const canComplete = allChecked;
 
@@ -263,7 +278,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                 setTab("quiz");
                 setPlaying(false);
               } else {
+                // Seeking back before the checkpoint lifts the gate, so "回去看
+                // 那一段影片" is actually possible. Playing forward hits the same
+                // checkpoint again and re-gates it.
                 setPosition(p);
+                setGateIndex(null);
               }
             }}
             onRestart={() => {
@@ -292,7 +311,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             <div className="flex items-center gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
               <Lock size={15} className="shrink-0 text-amber" />
               <p className="text-[13px] text-fg-2">
-                影片停在知識點檢查站。答對右邊的題目就會繼續播放。
+                影片停在知識點檢查站。答對右邊的題目就會繼續播放；想再看一次，把進度條往回拉就好。
               </p>
             </div>
           ) : null}
@@ -349,19 +368,21 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                           index={i}
                           total={lesson.checkpoints.length}
                           answered={isAnswered}
+                          reveal={revealed[i]}
                           accent={track.color}
-                          onCorrect={() => {
-                            answerCheckpoint(key, i, c.xp);
-                            if (gateIndex === i) {
+                          onAnswer={async (choice) => {
+                            const verdict = await answerCheckpoint(key, i, choice);
+                            if (verdict.correct && gateIndex === i) {
                               setGateIndex(null);
                               setTimeout(() => setPlaying(true), 550);
                             }
+                            return verdict;
                           }}
                         />
                       );
                     })
                   )}
-                  {allChecked ? <AllCheckpointsDone accent={track.color} /> : null}
+                  {allChecked && lesson.checkpoints.length > 0 ? <AllCheckpointsDone accent={track.color} /> : null}
                 </div>
               ) : null}
 
@@ -503,10 +524,12 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
           </Link>
         )}
 
-        <p className="hidden text-[12.5px] text-fg-3 sm:block">
-          {allChecked
-            ? "檢查站都過了，可以往下一課"
-            : "完成所有 " + lesson.checkpoints.length + " 個知識點檢查站以解鎖下一課"}
+        <p className="text-[12.5px] text-fg-3">
+          {lesson.checkpoints.length === 0
+            ? "這一課沒有檢查站，看完就可以往下一課"
+            : allChecked
+              ? "檢查站都過了，可以往下一課"
+              : "完成所有 " + lesson.checkpoints.length + " 個知識點檢查站以解鎖下一課"}
         </p>
 
         {next ? (

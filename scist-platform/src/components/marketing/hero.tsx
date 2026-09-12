@@ -281,7 +281,7 @@ export function Hero({ stats }: { stats: { challenges: number; lessons: number; 
             </div>
 
             <p className="mt-4 font-mono text-[12px] text-fg-3">
-              不用註冊也能看課。用 Discord 登入後，進度跨裝置同步，解題才會上排行榜。
+              註冊免費。登入後看課、解題、累積 XP，進度跨裝置同步。
             </p>
 
             <div className="mt-11 grid max-w-xl grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-4">

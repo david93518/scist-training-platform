@@ -8,7 +8,7 @@ import { HideOnAdmin } from "@/components/layout/hide-on-admin";
 import { ProgressSync } from "@/components/progress-sync";
 import { SettingsProvider } from "@/components/settings-provider";
 import { getSettingsSafe } from "@/server/repo/settings";
-import { siteUrl } from "@/server/env";
+import { features, siteUrl } from "@/server/env";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -62,6 +62,9 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const settings = await getSettingsSafe();
+  // the Discord button follows the server's own configuration, so nobody has to
+  // remember a second NEXT_PUBLIC_ variable to make it appear
+  const runtime = { discordLogin: features.discordLogin() };
   return (
     <html
       lang="zh-Hant"
@@ -72,7 +75,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${manrope.variable} ${jetbrains.variable} ${notoTC.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
-        <SettingsProvider value={settings}>
+        <SettingsProvider value={settings} runtime={runtime}>
           <RevealProvider>
             <ProgressSync />
             <SiteHeader />
