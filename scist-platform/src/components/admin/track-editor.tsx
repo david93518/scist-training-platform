@@ -53,6 +53,24 @@ function blank(): AdminTrack {
   };
 }
 
+/**
+ * Deleting content cascades into every learner's records, so the server refuses
+ * with 409 and a sentence naming what would be lost. Repeat it to the person and
+ * only force the delete if they still say yes.
+ */
+async function deleteWithLearnerWarning(remove: (force?: boolean) => Promise<void>) {
+  try {
+    await remove();
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (!msg.includes("學員紀錄")) throw e;
+    if (!window.confirm(msg + "\n\n仍要永久刪除嗎？")) return false;
+    await remove(true);
+    return true;
+  }
+}
+
 export function TrackEditor({ id }: { id?: string }) {
   const api = getAdminApi();
   const router = useRouter();
@@ -115,7 +133,12 @@ export function TrackEditor({ id }: { id?: string }) {
             {id && mayDelete ? (
               <ConfirmDelete
                 onConfirm={async () => {
-                  await api.tracks.remove(draft.id);
+                  try {
+                    if (!(await deleteWithLearnerWarning((force) => api.tracks.remove(draft.id, force)))) return;
+                  } catch (e) {
+                    toast(e instanceof Error ? e.message : "刪除失敗", "err");
+                    return;
+                  }
                   toast("已刪除");
                   router.push("/admin/tracks");
                 }}

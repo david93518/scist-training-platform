@@ -199,14 +199,16 @@ export async function getAnalytics(): Promise<AdminAnalytics> {
     return { id: t.id, name: t.name, color: t.color, lessons: ids.size, learners, completions, rate: learners && ids.size ? completions / (learners * ids.size) : 0 };
   });
 
-  // same blend as the overview's 卡關點: real traffic plus the seed numbers by difficulty
+  // Real traffic only. This page is what a 講師 screenshots for sponsors, so it
+  // must not blend in `baseSolves` — that is a hand-entered "looks alive" number
+  // for the public challenge cards, and mixing it in here produced a page that
+  // claimed 2,783 solves next to a weekly total of 1.
   const categories = (Object.keys(CATEGORY_META) as Category[]).map((cat) => {
     let attempts = 0;
     let solvesN = 0;
     for (const c of challenges.filter((x) => x.category === cat)) {
-      const factor = c.difficulty === "insane" ? 5 : c.difficulty === "hard" ? 3.6 : c.difficulty === "medium" ? 2.4 : 1.5;
-      attempts += Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0) + Math.round(c.baseSolves * factor);
-      solvesN += solveRows.filter((s) => s.challengeId === c.id).length + c.baseSolves;
+      attempts += Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0);
+      solvesN += solveRows.filter((s) => s.challengeId === c.id).length;
     }
     return { category: cat, label: CATEGORY_META[cat].label, color: CATEGORY_META[cat].color, attempts, solves: solvesN, rate: attempts ? solvesN / attempts : 0 };
   });

@@ -27,7 +27,18 @@ import { LoginDialog } from "@/components/layout/login-menu";
 import { useProgress, useHydrated } from "@/store/progress";
 import { getAdminApi } from "@/admin/api";
 import { can, capForAdminPath, landingFor, ROLE_COLOR, ROLE_LABEL, type Capability, type Role } from "@/lib/permissions";
+import { isEditorDirty } from "@/components/admin/ui";
 import { cn } from "@/lib/utils";
+
+/**
+ * Client-side navigation fires no beforeunload, so a sidebar click would throw
+ * away a half-written lesson without asking. Every link out of an editor goes
+ * through this.
+ */
+function confirmLeavingEditor(e: { preventDefault: () => void }) {
+  if (!isEditorDirty()) return;
+  if (!window.confirm("這一頁還有沒存的修改，離開就會不見。確定要離開嗎？")) e.preventDefault();
+}
 
 interface NavItem {
   href: string;
@@ -167,7 +178,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       {/* sidebar */}
       <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-white/[0.06] bg-bg-1/80 backdrop-blur lg:flex">
         <div className="flex h-[68px] items-center border-b border-white/[0.06] px-5">
-          <Link href={landing ?? "/"}>
+          <Link href={landing ?? "/"} onNavigate={confirmLeavingEditor}>
             <Logo />
           </Link>
         </div>
@@ -182,6 +193,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onNavigate={confirmLeavingEditor}
                     className={cn(
                       "flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13.5px] font-bold transition-colors",
                       active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-white/[0.04] hover:text-fg",
@@ -207,7 +219,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </div>
-          <Link href="/" className="mt-3 flex items-center gap-2 px-1 text-[12.5px] text-fg-3 hover:text-fg">
+          <Link href="/" onNavigate={confirmLeavingEditor} className="mt-3 flex items-center gap-2 px-1 text-[12.5px] text-fg-3 hover:text-fg">
             <ArrowLeft size={13} />
             回到前台
           </Link>
@@ -250,6 +262,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onNavigate={confirmLeavingEditor}
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold",
                   active ? "bg-accent/10 text-accent" : "text-fg-2",

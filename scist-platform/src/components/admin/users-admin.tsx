@@ -166,7 +166,15 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
                       value={u.role}
                       onChange={async (e) => {
                         const next = e.target.value as Role;
-                        await api.users.setRole(u.id, next);
+                        try {
+                          await api.users.setRole(u.id, next);
+                        } catch (err) {
+                          // e.g. an admin trying to demote themselves: the select
+                          // used to snap back with no explanation at all
+                          toast(err instanceof Error ? err.message : "改角色失敗", "err");
+                          await users.reload();
+                          return;
+                        }
                         await users.reload();
                         toast(u.handle + " 已改為" + ROLE_LABEL[next]);
                       }}
@@ -197,7 +205,12 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
                     {manage ? (
                       <button
                         onClick={async () => {
-                          await api.users.setBanned(u.id, !u.bannedAt);
+                          try {
+                            await api.users.setBanned(u.id, !u.bannedAt);
+                          } catch (err) {
+                            toast(err instanceof Error ? err.message : "停權失敗", "err");
+                            return;
+                          }
                           await users.reload();
                           toast(u.bannedAt ? "已解除停權" : "已停權", u.bannedAt ? "ok" : "info");
                         }}

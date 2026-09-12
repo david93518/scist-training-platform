@@ -88,14 +88,14 @@ export async function getStats(): Promise<AdminStats> {
   const challenges = await db.select({ id: schema.challenges.id, slug: schema.challenges.slug, name: schema.challenges.name, baseSolves: schema.challenges.baseSolves, difficulty: schema.challenges.difficulty }).from(schema.challenges).where(eq(schema.challenges.status, "published"));
   const stuck = challenges
     .map((c) => {
-      const realAttempts = Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0);
-      const realSolves = Number(solveRows.find((s) => s.challengeId === c.id)?.n ?? 0);
-      // before real traffic exists, estimate from seed numbers by difficulty
-      const factor = c.difficulty === "insane" ? 5 : c.difficulty === "hard" ? 3.6 : c.difficulty === "medium" ? 2.4 : 1.5;
-      const attempts = realAttempts + Math.round(c.baseSolves * factor);
-      const solved = realSolves + c.baseSolves;
+      // real traffic only — 卡關點 is an operational signal, so a seeded
+      // display number must not invent attempts that never happened
+      const attempts = Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0);
+      const solved = Number(solveRows.find((s) => s.challengeId === c.id)?.n ?? 0);
       return { slug: c.slug, name: c.name, attempts, solves: solved, rate: attempts ? solved / attempts : 0 };
     })
+    // a challenge nobody has tried yet is not a 卡關點, it is just new
+    .filter((c) => c.attempts > 0)
     .sort((a, b) => a.rate - b.rate)
     .slice(0, 6);
 

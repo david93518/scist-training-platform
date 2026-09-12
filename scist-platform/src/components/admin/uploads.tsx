@@ -6,7 +6,7 @@
  * (mode "direct") or simulate progress (mode "mock"). See docs/INTEGRATIONS.md.
  */
 import { useRef, useState } from "react";
-import { UploadCloud, FileArchive, Check, Loader2, X, RefreshCw, Video } from "lucide-react";
+import { UploadCloud, FileArchive, Check, Loader2, X, RefreshCw, Video, AlertTriangle } from "lucide-react";
 import { getAdminApi } from "@/admin/api";
 import type { AdminFile, UploadTicket, VideoProvider, VideoStatus } from "@/admin/types";
 import { Button, buttonClass } from "@/components/ui/primitives";
@@ -137,6 +137,8 @@ export function VideoField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ytInput, setYtInput] = useState(provider === "youtube" ? (videoId ?? "") : "");
+  // the last upload only pretended, because no video host is configured
+  const [wasSimulated, setWasSimulated] = useState(false);
 
   const tabs: { id: VideoProvider; label: string; hint: string }[] = [
     { id: "none", label: "無影片", hint: "純講義課程" },
@@ -150,6 +152,7 @@ export function VideoField({
     setPct(0);
     try {
       const ticket = await api.uploads.video(lessonId, { name: file.name, size: file.size, type: file.type });
+      setWasSimulated(ticket.mode === "mock" || !ticket.uploadUrl);
       onChange({ videoProvider: "stream", videoId: ticket.id, videoStatus: "uploading" });
       await uploadWithProgress(ticket, file, setPct, "POST");
       onChange({ videoProvider: "stream", videoId: ticket.id, videoStatus: "processing" });
@@ -258,6 +261,18 @@ export function VideoField({
             <Dropzone accept="video/*" hint="MP4 或 MOV，建議 1080p。瀏覽器直接傳到 Cloudflare，不經過我們的伺服器。" onFile={startUpload} disabled={busy} />
           )}
           {error ? <p className="text-[12.5px] text-red">{error}</p> : null}
+          {/* 沒接 Cloudflare 時上傳是假的。不講清楚的話，講師會以為影片已經上好了 */}
+          {wasSimulated && !busy ? (
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber" />
+              <p className="text-[12.5px] leading-relaxed text-fg-2">
+                <span className="font-bold text-amber">這次上傳是模擬的，檔案沒有真的傳出去。</span>
+                目前還沒有設定 Cloudflare Stream（<span className="font-mono">CF_STREAM_API_TOKEN</span>），
+                系統只產生了一個假的影片 ID，學員看到的會是替身播放器。
+                要真的上架影片，請先接好 Stream，或改用上面的 YouTube 方式貼未公開連結。
+              </p>
+            </div>
+          ) : null}
           <p className="font-mono text-[11px] leading-relaxed text-fg-3">
             {api.mode === "local"
               ? "本機模式：上傳是模擬的，會產生一個假的影片 ID。接上 CF_STREAM_API_TOKEN 後就是真的。"
@@ -283,6 +298,8 @@ export function FilesField({
 }) {
   const api = getAdminApi();
   const [progress, setProgress] = useState<Record<string, number>>({});
+  /** 檔案 id → 這次其實沒送出去（沒接 R2） */
+  const [simulated, setSimulated] = useState<Record<string, boolean>>({});
 
   const add = async (file: File) => {
     const temp: AdminFile = { id: "tmp-" + Date.now(), name: file.name, size: file.size, objectKey: null, status: "uploading" };
@@ -290,12 +307,16 @@ export function FilesField({
     onChange(next);
     try {
       const ticket = await api.uploads.file(challengeId, { name: file.name, size: file.size, type: file.type });
+      const fake = ticket.mode === "mock" || !ticket.uploadUrl;
       await uploadWithProgress(ticket, file, (p) => setProgress((s) => ({ ...s, [temp.id]: p })), "PUT");
+      setSimulated((s) => ({ ...s, [ticket.id]: fake }));
       onChange(next.map((f) => (f.id === temp.id ? { ...f, id: ticket.id, objectKey: ticket.objectKey ?? null, status: "ready" } : f)));
     } catch {
       onChange(next.filter((f) => f.id !== temp.id));
     }
   };
+
+  const anySimulated = Object.values(simulated).some(Boolean);
 
   return (
     <div className="flex flex-col gap-3">
@@ -310,7 +331,9 @@ export function FilesField({
                   {f.status === "uploading"
                     ? "上傳中 " + Math.round(progress[f.id] ?? 0) + "%"
                     : f.status === "ready"
-                      ? "已上傳 · " + humanSize(f.size) + (f.objectKey ? " · " + f.objectKey : "")
+                      ? simulated[f.id]
+                        ? "模擬上傳，檔案沒有真的送出 · " + humanSize(f.size)
+                        : "已上傳 · " + humanSize(f.size) + (f.objectKey ? " · " + f.objectKey : "")
                       : "僅列出檔名，尚未上傳"}
                 </div>
               </div>
@@ -326,6 +349,15 @@ export function FilesField({
         </div>
       ) : null}
       <Dropzone accept="*/*" hint="執行檔、pcap、zip 都可以。瀏覽器用預簽名網址直接傳到 R2。" onFile={add} />
+      {anySimulated ? (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber" />
+          <p className="text-[12.5px] leading-relaxed text-fg-2">
+            <span className="font-bold text-amber">附件是模擬上傳的，檔案沒有真的進到 R2。</span>
+            學員按下載會拿不到東西。請先設定 <span className="font-mono">R2_*</span> 再重新上傳一次。
+          </p>
+        </div>
+      ) : null}
       <p className="font-mono text-[11px] leading-relaxed text-fg-3">
         {api.mode === "local" ? "本機模式：上傳是模擬的。接上 R2_* 後檔案會真的進到 bucket。" : "檔案路徑：challenges/{slug}/{檔名}，前台用 R2_PUBLIC_URL 提供下載。"}
       </p>

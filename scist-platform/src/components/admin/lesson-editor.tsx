@@ -57,6 +57,24 @@ function blankLesson(track: AdminTrack | undefined, sortOrder: number, xp: numbe
   };
 }
 
+/**
+ * Deleting content cascades into every learner's records, so the server refuses
+ * with 409 and a sentence naming what would be lost. Repeat it to the person and
+ * only force the delete if they still say yes.
+ */
+async function deleteWithLearnerWarning(remove: (force?: boolean) => Promise<void>) {
+  try {
+    await remove();
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (!msg.includes("學員紀錄")) throw e;
+    if (!window.confirm(msg + "\n\n仍要永久刪除嗎？")) return false;
+    await remove(true);
+    return true;
+  }
+}
+
 export function LessonEditor({ id }: { id?: string }) {
   const api = getAdminApi();
   const router = useRouter();
@@ -127,7 +145,7 @@ export function LessonEditor({ id }: { id?: string }) {
     for (const [i, c] of draft.checkpoints.entries()) {
       if (!c.question.trim()) return toast("檢查站 " + (i + 1) + " 缺題目", "err");
       if (c.options.filter((o) => o.trim()).length < 2) return toast("檢查站 " + (i + 1) + " 至少要兩個選項", "err");
-      if (!c.options[c.answer]?.trim()) return toast("檢查站 " + (i + 1) + " 的正確答案是空的", "err");
+      if (!c.options[c.answer ?? -1]?.trim()) return toast("檢查站 " + (i + 1) + " 的正確答案是空的", "err");
     }
     setSaving(true);
     try {
@@ -136,7 +154,20 @@ export function LessonEditor({ id }: { id?: string }) {
         ...draft,
         content: keepFilledBlocks(mergeContent(md, [...callouts, ...leftoverTips])),
         checkpoints: [...draft.checkpoints]
-          .map((c) => ({ ...c, at: checkpointAtSec(c.at, draft.durationSec), options: c.options.filter((o) => o.trim()) }))
+          .map((c) => {
+            // Dropping the blank options shifts the ones after them, so the
+            // correct-answer index has to move with them. Without this, leaving
+            // a gap in the middle pointed `answer` at the wrong option (or past
+            // the end) and the checkpoint could never be answered correctly.
+            const kept = c.options.map((o, i) => ({ o, i })).filter((x) => x.o.trim());
+            const answer = kept.findIndex((x) => x.i === c.answer);
+            return {
+              ...c,
+              at: checkpointAtSec(c.at, draft.durationSec),
+              options: kept.map((x) => x.o),
+              answer: answer >= 0 ? answer : 0,
+            };
+          })
           .sort((a, b) => a.at - b.at),
       };
       await api.lessons.save(cleaned);
@@ -165,7 +196,12 @@ export function LessonEditor({ id }: { id?: string }) {
             {id ? (
               <ConfirmDelete
                 onConfirm={async () => {
-                  await api.lessons.remove(draft.id);
+                  try {
+                    if (!(await deleteWithLearnerWarning((force) => api.lessons.remove(draft.id, force)))) return;
+                  } catch (e) {
+                    toast(e instanceof Error ? e.message : "刪除失敗", "err");
+                    return;
+                  }
                   toast("已刪除");
                   router.push("/admin/lessons");
                 }}
