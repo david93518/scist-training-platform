@@ -18,7 +18,7 @@ import { HintsPanel } from "@/components/challenges/hints-panel";
 import { QaPanel } from "@/components/community/qa-panel";
 import { CATEGORY_META } from "@/data/challenges";
 import { allLessons, type Track } from "@/data/tracks";
-import { getChallengesPublic, getTracksPublic } from "@/server/repo/content";
+import { getChallengesForLearner, getTracksPublic } from "@/server/repo/content";
 import { getInstructorsPublic, getRecentSolvers } from "@/server/repo/site";
 import { formatDate, formatNumber } from "@/lib/utils";
 
@@ -28,7 +28,7 @@ export async function generateMetadata(
   props: PageProps<"/challenges/[slug]">,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const c = (await getChallengesPublic()).find((x) => x.slug === slug);
+  const c = (await getChallengesForLearner()).find((x) => x.slug === slug);
   if (!c) return { title: "找不到這題" };
   return { title: c.name, description: c.blurb };
 }
@@ -47,7 +47,7 @@ function lessonLinkFor(tracks: Track[], slug: string) {
 
 export default async function ChallengePage(props: PageProps<"/challenges/[slug]">) {
   const { slug } = await props.params;
-  const [challenges, tracks, instructors] = await Promise.all([getChallengesPublic(), getTracksPublic(), getInstructorsPublic()]);
+  const [challenges, tracks, instructors] = await Promise.all([getChallengesForLearner(), getTracksPublic(), getInstructorsPublic()]);
   const c = challenges.find((x) => x.slug === slug);
   if (!c) notFound();
 

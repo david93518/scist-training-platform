@@ -21,8 +21,9 @@ export interface Checkpoint {
   at: number;
   question: string;
   options: string[];
-  answer: number;
-  explain: string;
+  /** 正解與解析只存在伺服器。公開的課程資料會拿掉，答題由 POST /api/progress 判定 */
+  answer?: number;
+  explain?: string;
   xp: number;
 }
 

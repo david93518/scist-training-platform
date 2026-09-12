@@ -17,11 +17,12 @@ export const PUT = route(async (req: Request, ctx: RouteContext<"/api/admin/less
   return json(saved);
 });
 
-export const DELETE = route(async (_req: Request, ctx: RouteContext<"/api/admin/lessons/[id]">) => {
+export const DELETE = route(async (req: Request, ctx: RouteContext<"/api/admin/lessons/[id]">) => {
   const user = await requireCap("content.delete");
   const { id } = await ctx.params;
   const before = await findLessonAdmin(id);
-  await deleteLesson(id);
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  await deleteLesson(id, force);
   await audit(user.id, "delete", "lesson", id, describeDelete(before, id));
   return noContent();
 });

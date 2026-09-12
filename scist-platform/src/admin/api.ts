@@ -48,28 +48,28 @@ export interface AdminApi {
   tracks: {
     list(): Promise<AdminTrack[]>;
     save(track: AdminTrack): Promise<AdminTrack>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   lessons: {
     list(): Promise<AdminLesson[]>;
     save(lesson: AdminLesson): Promise<AdminLesson>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
     reorder(moduleId: string, ids: string[]): Promise<void>;
   };
   challenges: {
     list(): Promise<AdminChallenge[]>;
     save(challenge: AdminChallenge): Promise<AdminChallenge>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   events: {
     list(): Promise<AdminEvent[]>;
     save(event: AdminEvent): Promise<AdminEvent>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   instructors: {
     list(): Promise<AdminInstructor[]>;
     save(instructor: AdminInstructor): Promise<AdminInstructor>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   users: {
     list(): Promise<AdminUser[]>;
@@ -627,18 +627,18 @@ export const httpApi: AdminApi = {
   tracks: {
     list: () => http("/tracks"),
     save: (t) => http("/tracks/" + t.id, { method: "PUT", body: json(t) }),
-    remove: (id) => http("/tracks/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/tracks/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
   },
   lessons: {
     list: () => http("/lessons"),
     save: (l) => http("/lessons/" + l.id, { method: "PUT", body: json(l) }),
-    remove: (id) => http("/lessons/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/lessons/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
     reorder: (moduleId, ids) => http("/lessons/reorder", { method: "POST", body: json({ moduleId, ids }) }),
   },
   challenges: {
     list: () => http("/challenges"),
     save: (c) => http("/challenges/" + c.id, { method: "PUT", body: json(c) }),
-    remove: (id) => http("/challenges/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/challenges/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
   },
   events: {
     list: () => http("/events"),

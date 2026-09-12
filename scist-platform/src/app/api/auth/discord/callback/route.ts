@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ApiError, exchangeDiscordCode, upsertDiscordUser, setSessionCookie } from "@/server/auth";
 import { env } from "@/server/env";
 import { route, json } from "@/server/http";
+import { safeNextPath } from "@/lib/safe-next";
 
 /** Step 2: Discord sends the user back with ?code&state. */
 export const GET = route(async (req: Request) => {
@@ -29,6 +30,6 @@ export const GET = route(async (req: Request) => {
   }
 
   await setSessionCookie(session);
-  const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const dest = safeNextPath(next) ?? "/dashboard";
   return NextResponse.redirect(origin + dest);
 });

@@ -17,11 +17,12 @@ export const PUT = route(async (req: Request, ctx: RouteContext<"/api/admin/trac
   return json(saved);
 });
 
-export const DELETE = route(async (_req: Request, ctx: RouteContext<"/api/admin/tracks/[id]">) => {
+export const DELETE = route(async (req: Request, ctx: RouteContext<"/api/admin/tracks/[id]">) => {
   const user = await requireCap("track.delete");
   const { id } = await ctx.params;
   const before = await findTrackAdmin(id);
-  await deleteTrack(id);
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  await deleteTrack(id, force);
   await audit(user.id, "delete", "track", id, describeDelete(before, id));
   return noContent();
 });

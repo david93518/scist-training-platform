@@ -3,7 +3,7 @@
  * checkpoint answers, solves, hints, XP ledger, event registrations,
  * challenge instances. The leaderboard is computed from the ledger.
  */
-import { and, desc, eq, gt, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { sha256Hex, normalizeFlag } from "@/lib/hash";
 import { ApiError } from "../auth";
@@ -154,18 +154,24 @@ export async function setWatched(userId: string, trackSlug: string, lessonSlug: 
   return { watched: value };
 }
 
-export async function answerCheckpoint(userId: string, trackSlug: string, lessonSlug: string, index: number) {
+/**
+ * Grades one checkpoint. The correct option never leaves the server, so the
+ * submitted choice is what decides: a wrong answer earns nothing and gives no
+ * explanation away, and XP is only ever written for a genuinely correct one.
+ */
+export async function answerCheckpoint(userId: string, trackSlug: string, lessonSlug: string, index: number, choice: number) {
   const lesson = await lessonByKey(trackSlug, lessonSlug);
   const cp = lesson.checkpoints[index];
   if (!cp) throw new ApiError(400, "no such checkpoint");
   const db = await getDb();
   const existing = await db.query.lessonProgress.findFirst({ where: and(eq(schema.lessonProgress.userId, userId), eq(schema.lessonProgress.lessonId, lesson.id)) });
   const done = existing?.checkpointsDone ?? [];
-  if (done.includes(index)) return { awarded: 0, checkpointsDone: done };
+  if (done.includes(index)) return { correct: true, awarded: 0, explain: cp.explain ?? "", checkpointsDone: done };
+  if (choice !== cp.answer) return { correct: false, awarded: 0, checkpointsDone: done };
   const next = [...done, index];
   await upsertProgress(userId, lesson.id, { checkpointsDone: next });
   await ledger(userId, cp.xp, "checkpoint", lesson.id + "#" + index, "答對知識點檢查站");
-  return { awarded: cp.xp, checkpointsDone: next };
+  return { correct: true, awarded: cp.xp, explain: cp.explain ?? "", checkpointsDone: next };
 }
 
 export async function completeLesson(userId: string, trackSlug: string, lessonSlug: string) {
@@ -204,13 +210,28 @@ async function refundHints(userId: string, challengeId: string, challengeName: s
   });
   if (done) return 0;
 
-  const unlocked = await db
-    .select({ cost: schema.challengeHints.cost })
-    .from(schema.hintUnlocks)
-    .innerJoin(schema.challengeHints, eq(schema.challengeHints.id, schema.hintUnlocks.hintId))
-    .where(and(eq(schema.hintUnlocks.userId, userId), eq(schema.challengeHints.challengeId, challengeId)));
+  // 退的是「實際扣掉的」而不是牌價：扣款會在餘額不足時被截斷，照牌價退會
+  // 憑空多給 XP。所以直接把當初那幾筆負數加回來。
+  const hintIds = (
+    await db
+      .select({ id: schema.challengeHints.id })
+      .from(schema.hintUnlocks)
+      .innerJoin(schema.challengeHints, eq(schema.challengeHints.id, schema.hintUnlocks.hintId))
+      .where(and(eq(schema.hintUnlocks.userId, userId), eq(schema.challengeHints.challengeId, challengeId)))
+  ).map((h) => h.id);
+  if (hintIds.length === 0) return 0;
+  const [{ spent }] = await db
+    .select({ spent: sql<number>`coalesce(-sum(${schema.xpLedger.delta}), 0)::int` })
+    .from(schema.xpLedger)
+    .where(
+      and(
+        eq(schema.xpLedger.userId, userId),
+        eq(schema.xpLedger.reason, "hint"),
+        inArray(schema.xpLedger.refId, hintIds),
+      ),
+    );
 
-  const total = unlocked.reduce((n, h) => n + h.cost, 0);
+  const total = Number(spent);
   if (total <= 0) return 0;
   await ledger(userId, total, "hint", refId, "解出後退還提示 XP（" + challengeName + "）");
   return total;
@@ -278,9 +299,13 @@ export async function unlockHint(userId: string, slug: string, hintId: string) {
     const prev = await db.query.hintUnlocks.findFirst({ where: and(eq(schema.hintUnlocks.userId, userId), eq(schema.hintUnlocks.hintId, ordered[idx - 1].id)) });
     if (!prev) throw new ApiError(400, "先解鎖上一則提示");
   }
+  // 扣到 0 就停。以前直接扣整筆，XP 只有 10 的人買 60 分的提示會變成 -50，
+  // 然後那個負分就直接出現在公開排行榜上。
+  const balance = await xpOf(userId);
+  const charged = Math.max(0, Math.min(hint.cost, balance));
   await db.insert(schema.hintUnlocks).values({ userId, hintId });
-  await ledger(userId, -hint.cost, "hint", hintId, "解鎖提示 " + ch.name);
-  return { text: hint.text, cost: hint.cost };
+  if (charged > 0) await ledger(userId, -charged, "hint", hintId, "解鎖提示 " + ch.name);
+  return { text: hint.text, cost: charged };
 }
 
 /**
@@ -300,6 +325,9 @@ export async function listUnlockedHints(userId: string, slug: string) {
 }
 
 /* ------------------------------ instances ------------------------------ */
+/** How many containers one account may hold at the same time. */
+const MAX_LIVE_INSTANCES = 3;
+
 export async function spawnInstance(userId: string, slug: string) {
   const db = await getDb();
   const { features } = await getSettings();
@@ -309,6 +337,16 @@ export async function spawnInstance(userId: string, slug: string) {
   if (ch.connectionType === "none") throw new ApiError(400, "這題不需要環境");
   const running = await db.query.instances.findFirst({ where: and(eq(schema.instances.userId, userId), eq(schema.instances.challengeId, ch.id), eq(schema.instances.status, "running")) });
   if (running && running.expiresAt > new Date()) return toInstance(running, ch.connectionType);
+
+  // one container per challenge is not enough of a limit on its own: without a
+  // cap a single account can hold one on every Docker-backed challenge at once
+  const [{ live }] = await db
+    .select({ live: sql<number>`count(*)::int` })
+    .from(schema.instances)
+    .where(and(eq(schema.instances.userId, userId), eq(schema.instances.status, "running"), gt(schema.instances.expiresAt, new Date())));
+  if (Number(live) >= MAX_LIVE_INSTANCES) {
+    throw new ApiError(429, "你同時最多開 " + MAX_LIVE_INSTANCES + " 個環境。先把用不到的關掉再開新的。");
+  }
 
   if (!ch.instanceImage) {
     // shared static target: nothing to start, just hand out the address
@@ -399,4 +437,29 @@ export async function leaderboard(scope: "weekly" | "alltime" | "schools", weekS
     bySchool.set(e.schoolId, cur);
   }
   return [...bySchool.values()].sort((a, b) => b.xp - a.xp);
+}
+
+/**
+ * The correct option and explanation for the checkpoints this learner has
+ * already passed on one lesson.
+ *
+ * Grading moved to the server, which means the browser no longer has the answer
+ * key — correct, but it also meant someone reviewing a lesson they had finished
+ * saw their old checkpoints with no explanation and no indication of which
+ * option was right. They earned those, so it is safe to hand them back; the
+ * ones they have not answered are still withheld.
+ */
+export async function revealedCheckpoints(userId: string, trackSlug: string, lessonSlug: string) {
+  const lesson = await lessonByKey(trackSlug, lessonSlug);
+  const db = await getDb();
+  const progress = await db.query.lessonProgress.findFirst({
+    where: and(eq(schema.lessonProgress.userId, userId), eq(schema.lessonProgress.lessonId, lesson.id)),
+  });
+  const done = progress?.checkpointsDone ?? [];
+  const out: Record<number, { answer: number; explain: string }> = {};
+  for (const i of done) {
+    const cp = lesson.checkpoints[i];
+    if (cp && typeof cp.answer === "number") out[i] = { answer: cp.answer, explain: cp.explain ?? "" };
+  }
+  return out;
 }

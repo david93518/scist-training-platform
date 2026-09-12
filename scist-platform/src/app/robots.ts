@@ -7,8 +7,8 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // the console and the API have nothing to index, and /api leaks nothing useful
-      disallow: ["/admin", "/admin/", "/api/"],
+      // the console, the API and the signed-in-only pages have nothing to index
+      disallow: ["/admin", "/admin/", "/api/", "/dashboard"],
     },
     sitemap: base + "/sitemap.xml",
     host: base,

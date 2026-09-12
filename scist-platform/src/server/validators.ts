@@ -166,7 +166,7 @@ export const settingsSchema = z.object({
 
 export const progressSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("watched"), track: slug, lesson: slug, value: z.number().min(0).max(1) }),
-  z.object({ action: z.literal("checkpoint"), track: slug, lesson: slug, index: z.number().int().min(0).max(50) }),
+  z.object({ action: z.literal("checkpoint"), track: slug, lesson: slug, index: z.number().int().min(0).max(50), choice: z.number().int().min(0).max(20) }),
   z.object({ action: z.literal("complete"), track: slug, lesson: slug }),
   z.object({ action: z.literal("note"), track: slug, lesson: slug, note: z.string().max(20000) }),
 ]);

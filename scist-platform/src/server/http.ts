@@ -25,9 +25,26 @@ export async function readJson<T>(req: Request, schema: ZodType<T>): Promise<T> 
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    throw new ApiError(400, "invalid body: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; "));
+    // 這個訊息會原封不動出現在後台的紅色 toast 上，所以講人話、講清楚是哪個欄位
+    const detail = parsed.error.issues.map((i) => (i.path.length ? "「" + i.path.join(".") + "」" : "") + i.message).join("；");
+    throw new ApiError(400, "有欄位不符合規定：" + detail);
   }
   return parsed.data;
+}
+
+/**
+ * Postgres unique-violation → a sentence the person editing can act on.
+ * Without this a duplicate slug surfaced in the console as a bare
+ * "internal error" and the author had no idea which field to change.
+ */
+function friendlyDbError(e: unknown): ApiError | null {
+  const err = e as { code?: string; constraint_name?: string; constraint?: string; message?: string };
+  const code = err?.code;
+  if (code !== "23505") return null;
+  const target = String(err.constraint_name ?? err.constraint ?? err.message ?? "");
+  if (/slug/i.test(target)) return new ApiError(409, "這個網址代稱已經有人用了，換一個再存。");
+  if (/handle/i.test(target)) return new ApiError(409, "這個帳號名稱已經被註冊了。");
+  return new ApiError(409, "有欄位跟現有資料重複了，請改掉重複的值再存。");
 }
 
 /**
@@ -53,6 +70,9 @@ export function route<Args extends unknown[]>(fn: (...args: Args) => Promise<Res
       return await fn(...args);
     } catch (e) {
       if (e instanceof ApiError) return json({ error: e.message }, { status: e.status });
+      // a Drizzle failure wraps the driver error; look at both
+      const friendly = friendlyDbError(e) ?? friendlyDbError((e as { cause?: unknown })?.cause);
+      if (friendly) return json({ error: friendly.message }, { status: friendly.status });
       console.error(e);
       return json({ error: "internal error" }, { status: 500 });
     }
