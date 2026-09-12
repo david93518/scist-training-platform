@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { requireRole } from "@/server/auth";
+import { requireCap } from "@/server/auth";
 import { route, json, readJson } from "@/server/http";
 import { uploadFileSchema } from "@/server/validators";
 import { presignPut, objectKeyFor } from "@/server/services/r2";
@@ -8,7 +8,7 @@ import { getDb, schema } from "@/server/db";
 
 /** Returns a presigned PUT for R2 (or a mock ticket) and records the file row. */
 export const POST = route(async (req: Request) => {
-  await requireRole("instructor");
+  await requireCap("content.write");
   const input = await readJson(req, uploadFileSchema);
   const db = await getDb();
   const ch = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, input.challengeId), columns: { slug: true } });

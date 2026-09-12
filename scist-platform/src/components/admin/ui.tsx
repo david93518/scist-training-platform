@@ -186,7 +186,7 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={cn(control, "h-10", props.className)} />;
+  return <select {...props} className={cn(control, "h-10 cursor-pointer appearance-auto", props.className)} />;
 }
 
 export function Toggle({
@@ -428,14 +428,32 @@ export function slugify(s: string) {
 
 /* ------------------------------ editor helpers ------------------------------ */
 /** Warns before the tab is closed or reloaded while there are unsaved changes. */
+/**
+ * Whether an editor on screen has unsaved changes.
+ *
+ * `beforeunload` only covers closing or reloading the tab. The editors live on
+ * their own routes with the console's sidebar next to them, so the likelier way
+ * to lose a half-written lesson is clicking another sidebar link — a client-side
+ * navigation that fires no browser event. AdminShell asks this before letting a
+ * link through, which is why the flag lives outside React.
+ */
+let editorDirty = false;
+export function isEditorDirty() {
+  return editorDirty;
+}
+
 export function useUnsavedGuard(dirty: boolean) {
   useEffect(() => {
+    editorDirty = dirty;
     if (!dirty) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => {
+      editorDirty = false;
+      window.removeEventListener("beforeunload", handler);
+    };
   }, [dirty]);
 }
 

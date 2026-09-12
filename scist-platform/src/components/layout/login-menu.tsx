@@ -3,18 +3,17 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock } from "lucide-react";
+import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock, Ban } from "lucide-react";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
 import { SCHOOLS } from "@/data/schools";
-import { useProgress, useHydrated, refreshProfile, type Role } from "@/store/progress";
+import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
 import { api } from "@/lib/api";
+import { bannedNotice } from "@/lib/ban-notice";
+import { safeNextPath } from "@/lib/safe-next";
+import { can, ROLE_LABEL } from "@/lib/permissions";
 import { rankFor } from "@/lib/xp";
-import { useRanks, useSettings } from "@/components/settings-provider";
+import { useRanks, useRuntimeFlags, useSettings } from "@/components/settings-provider";
 import { formatNumber } from "@/lib/utils";
-
-const DISCORD_READY = process.env.NEXT_PUBLIC_DISCORD_LOGIN === "1";
-
-const ROLE_LABEL: Record<Role, string> = { student: "學員", ta: "助教", instructor: "講師", admin: "管理員" };
 
 /**
  * Where the dialog was asked to send the user afterwards. The admin gate
@@ -33,8 +32,7 @@ function readIntent(): LoginIntent {
   if (typeof window === "undefined") return { open: false, reason: null, next: null };
   const params = new URLSearchParams(window.location.search);
   if (!params.has("login")) return { open: false, reason: null, next: null };
-  const rawNext = params.get("next");
-  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
+  const next = safeNextPath(params.get("next"));
   const reason = params.get("login");
   return { open: true, reason: reason === "admin" || (next?.startsWith("/admin") ?? false) ? "admin" : reason, next };
 }
@@ -49,6 +47,18 @@ function clearIntentFromUrl() {
   window.history.replaceState(window.history.state, "", url.pathname + (url.search || "") + url.hash);
 }
 
+const LOGIN_EVENT = "scist:login";
+
+/**
+ * Opens the login dialog from anywhere in the app (a gated button, the
+ * LoginWall). `next` is the same-origin path to land on after signing in;
+ * the header's LoginMenu listens and owns the dialog.
+ */
+export function requestLogin(next?: string | null, reason: string | null = null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(LOGIN_EVENT, { detail: { next: safeNextPath(next), reason } }));
+}
+
 function IconDiscord({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -58,8 +68,8 @@ function IconDiscord({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Login dialog. Account + password is the real login.
- * Discord is optional when NEXT_PUBLIC_DISCORD_LOGIN=1.
+ * Login dialog. Account + password is the real login. The Discord button
+ * appears whenever the server has DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.
  */
 export function LoginDialog({ open, onClose, next, reason }: { open: boolean; onClose: () => void; next?: string | null; reason?: string | null }) {
   if (!open) return null;
@@ -67,14 +77,18 @@ export function LoginDialog({ open, onClose, next, reason }: { open: boolean; on
 }
 
 function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next: string | null; reason: string | null }) {
-  const siteName = useSettings().site.name;
+  const site = useSettings().site;
+  const siteName = site.name;
   const handle = useProgress((s) => s.handle);
   const role = useProgress((s) => s.role);
   const authenticated = useProgress((s) => s.authenticated);
   const logout = useProgress((s) => s.logout);
 
+  // 有沒有接 Discord 由伺服器決定，不用再記一個 NEXT_PUBLIC_ 變數
+  const discordReady = useRuntimeFlags().discordLogin;
   const forAdmin = reason === "admin";
-  const canAdmin = role === "instructor" || role === "admin";
+  const forBanned = reason === "banned";
+  const canAdmin = can(role, "admin.enter");
   const roleTooLow = forAdmin && authenticated && !canAdmin;
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -148,17 +162,43 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
         </div>
 
         <div className="p-6">
+          {forBanned ? (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-red/40 bg-red/[0.08] px-4 py-3">
+              <Ban size={15} className="mt-0.5 shrink-0 text-red" />
+              <p className="text-[13px] leading-relaxed text-fg-2">
+                {bannedNotice(site.discordInvite)}
+                {site.discordInvite?.trim() ? (
+                  <>
+                    {" "}
+                    <a href={site.discordInvite} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+                      前往 Discord
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            </div>
+          ) : null}
+
+          {!forAdmin && !forBanned && next && !authenticated ? (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+              <Lock size={15} className="mt-0.5 shrink-0 text-accent" />
+              <p className="text-[13px] leading-relaxed text-fg-2">
+                看課、解題、累積 XP 都要先登入。登入後會直接帶你回 <span className="font-mono text-fg">{next}</span>。
+              </p>
+            </div>
+          ) : null}
+
           {forAdmin ? (
             <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
               <Lock size={15} className="mt-0.5 shrink-0 text-amber" />
               <p className="text-[13px] leading-relaxed text-fg-2">
                 {roleTooLow ? (
                   <>
-                    你目前是 <span className="font-mono text-fg">{handle}</span>（{ROLE_LABEL[role]}），後台需要講師或管理員。角色由管理員在「學員與角色」指派，不能自己選。
+                    你目前是 <span className="font-mono text-fg">{handle}</span>（{ROLE_LABEL[role]}），後台需要助教以上。角色由管理員在「學員與角色」指派，不能自己選。
                   </>
                 ) : (
                   <>
-                    後台需要講師或管理員權限。登入後會直接帶你回 <span className="font-mono text-fg">{next ?? "/admin"}</span>。
+                    後台需要助教以上的權限。登入後會直接帶你回 <span className="font-mono text-fg">{next ?? "/admin"}</span>。
                   </>
                 )}
               </p>
@@ -265,7 +305,7 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
             </>
           )}
 
-          {DISCORD_READY && !roleTooLow ? (
+          {discordReady && !roleTooLow ? (
             <>
               <div className="my-5 flex items-center gap-3">
                 <span className="h-px flex-1 bg-white/[0.08]" />
@@ -304,25 +344,47 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
 export function LoginMenu() {
   const hydrated = useHydrated();
   const handle = useProgress((s) => s.handle);
+  const displayName = useProgress((s) => s.displayName);
   const role = useProgress((s) => s.role);
   const xp = useProgress((s) => s.xp);
   const authenticated = useProgress((s) => s.authenticated);
   const logout = useProgress((s) => s.logout);
+  // 用到一半被停權時 /api/me 會回這個旗標，直接把說明彈出來
+  const banned = useProgress((s) => s.banned);
+  const dismissBanned = useProgress((s) => s.dismissBanned);
   const [intent, setIntent] = useState<LoginIntent>(readIntent);
   const [menu, setMenu] = useState(false);
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
-  const canAdmin = role === "instructor" || role === "admin";
+  const canAdmin = can(role, "admin.enter");
+
+  // requestLogin() from any component opens the dialog with a destination
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      const d = (e as CustomEvent<{ next: string | null; reason: string | null }>).detail;
+      setIntent({ open: true, reason: d.reason ?? (d.next?.startsWith("/admin") ? "admin" : null), next: d.next });
+    };
+    window.addEventListener(LOGIN_EVENT, onRequest);
+    return () => window.removeEventListener(LOGIN_EVENT, onRequest);
+  }, []);
 
   const close = () => {
     setIntent({ open: false, reason: null, next: null });
+    dismissBanned();
     clearIntentFromUrl();
   };
   const openPlain = () => setIntent({ open: true, reason: null, next: null });
 
   if (!hydrated) return <span className="h-10 w-24" />;
 
-  const dialog = <LoginDialog open={intent.open} onClose={close} next={intent.next} reason={intent.reason} />;
+  const dialog = (
+    <LoginDialog
+      open={intent.open || banned}
+      onClose={close}
+      next={intent.next}
+      reason={banned ? "banned" : intent.reason}
+    />
+  );
 
   if (!authenticated) {
     return (
@@ -344,7 +406,7 @@ export function LoginMenu() {
         aria-expanded={menu}
       >
         <HexAvatar seed={handle} size={26} />
-        <span className="hidden font-mono text-[13px] font-bold sm:inline">{handle}</span>
+        <span className="hidden text-[13px] font-bold sm:inline">{displayName || handle}</span>
         <span className="hidden items-center gap-1 font-mono text-[12px] tabular-nums text-accent sm:flex">
           <Zap size={11} />
           {formatNumber(xp)}
@@ -357,7 +419,8 @@ export function LoginMenu() {
           {createPortal(<div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />, document.body)}
           <div className="card absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden p-1.5" role="menu">
             <div className="px-3 py-2.5">
-              <div className="font-mono text-[13px] font-bold">{handle}</div>
+              <div className="text-[13px] font-bold">{displayName || handle}</div>
+              {displayName && displayName !== handle ? <div className="font-mono text-[11px] text-fg-3">@{handle}</div> : null}
               <div className="text-[11.5px]" style={{ color: rank.color }}>
                 {rank.name} · {formatNumber(xp)} XP · {ROLE_LABEL[role]}
               </div>

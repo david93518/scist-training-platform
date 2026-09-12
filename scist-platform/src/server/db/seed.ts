@@ -19,6 +19,7 @@ import { SCHOOLS } from "../../data/schools";
 import { PLAYERS } from "../../data/players";
 import { DEFAULT_SETTINGS } from "../../lib/settings-defaults";
 import { seeded } from "../../lib/utils";
+import { checkpointAtSec } from "../../lib/checkpoint";
 
 export async function isDatabaseEmpty(db: Db) {
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.tracks);
@@ -93,7 +94,7 @@ export async function seedDatabase(db: Db, opts: { force?: boolean } = {}): Prom
           xp: l.xp,
           videoProvider: "none" as const,
           content: l.content,
-          checkpoints: l.checkpoints,
+          checkpoints: l.checkpoints.map((c) => ({ ...c, at: checkpointAtSec(c.at, l.durationSec) })),
           labSlug: l.labSlug ?? null,
           sortOrder: li,
           status: "published" as const,
@@ -136,10 +137,12 @@ export async function seedDatabase(db: Db, opts: { force?: boolean } = {}): Prom
     await db.delete(schema.challengeFiles).where(sql`${schema.challengeFiles.challengeId} = ${c.id}`);
 
     for (const [i, f] of c.flags.entries()) {
+      // the public Challenge type leaves these optional because the browser never sees them; seed data must have them
+      if (!f.sha256) throw new Error("seed: challenge " + c.slug + " flag " + f.id + " has no sha256");
       await db.insert(schema.challengeFlags).values({ id: c.id + "-" + f.id, challengeId: c.id, flagId: f.id, label: f.label, sha256: f.sha256, points: f.points, sortOrder: i });
     }
     for (const [i, h] of c.hints.entries()) {
-      await db.insert(schema.challengeHints).values({ id: c.id + "-" + h.id, challengeId: c.id, sortOrder: i, text: h.text, cost: h.cost });
+      await db.insert(schema.challengeHints).values({ id: c.id + "-" + h.id, challengeId: c.id, sortOrder: i, text: h.text ?? "", cost: h.cost });
     }
     for (const name of c.files ?? []) {
       await db.insert(schema.challengeFiles).values({ challengeId: c.id, name });

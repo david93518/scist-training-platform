@@ -11,7 +11,7 @@ export const POST = route(async (req: Request) => {
     case "watched":
       return json(await learner.setWatched(user.id, input.track, input.lesson, input.value));
     case "checkpoint":
-      return json(await learner.answerCheckpoint(user.id, input.track, input.lesson, input.index));
+      return json(await learner.answerCheckpoint(user.id, input.track, input.lesson, input.index, input.choice));
     case "complete":
       return json(await learner.completeLesson(user.id, input.track, input.lesson));
     case "note":

@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
-import { allLessons } from "@/data/tracks";
-import { getChallengesPublic, getTracksPublic } from "@/server/repo/content";
+import { getTracksPublic } from "@/server/repo/content";
 import { siteUrl } from "@/server/env";
 
 /** Content lives in the database, so this is built per request, not at build. */
@@ -19,18 +18,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: path === "" ? 1 : 0.8,
   }));
 
-  // a database that is down must not turn the sitemap into a 500
+  // Only publicly readable pages belong here. The lesson player and a
+  // challenge's own page need an account (src/proxy.ts), so listing them would
+  // just point crawlers at a redirect to the login dialog.
   try {
-    const [tracks, challenges] = await Promise.all([getTracksPublic(), getChallengesPublic()]);
-
+    const tracks = await getTracksPublic();
     for (const t of tracks) {
       entries.push({ url: base + "/learn/" + t.slug, lastModified: now, changeFrequency: "weekly", priority: 0.7 });
-      for (const l of allLessons(t)) {
-        entries.push({ url: base + "/learn/" + t.slug + "/" + l.slug, lastModified: now, changeFrequency: "monthly", priority: 0.6 });
-      }
-    }
-    for (const c of challenges) {
-      entries.push({ url: base + "/challenges/" + c.slug, lastModified: now, changeFrequency: "monthly", priority: 0.6 });
     }
   } catch (err) {
     console.error("[sitemap] content unavailable, serving static paths only:", err);

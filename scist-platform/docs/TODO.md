@@ -117,7 +117,7 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 
 | 開關 | 現在的行為 | 改了哪裡 |
 | --- | --- | --- |
-| `guestProgress` | 關掉時未登入者看課不記進度，課程頁出現「登入才能記錄進度」橫幅，完成鈕與筆記停用 | `store/progress.ts` 的 `mayRecord`、`progress-sync.tsx`、`lesson-player.tsx` |
+| ~~`guestProgress`~~ | **已移除**（2026-09-12）。改成所有學習功能都要帳號，沒有訪客進度可以開關 | 設定、型別、驗證與後台開關都拿掉了 |
 | `instances` | 關掉時題目頁不顯示「啟動環境」，只留固定連線資訊；後端 `spawnInstance()` 也直接拒絕 | `instance-panel.tsx`、`repo/ops.ts` |
 | `questions` | 關掉時問答區只剩閱讀，`createQuestion` / `createAnswer` 後端也擋 | `qa-panel.tsx`、`repo/community.ts` |
 
@@ -137,6 +137,21 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 
 ### 2.2 ✅ 發問者不能自己採納最佳解答
 **已做**：`PATCH /api/questions/[id]` 放寬成「助教以上**或**問題作者本人」，每則回答多一個「這個解決了我的問題」按鈕，只有作者看得到。
+
+### 2.2b ✅ 發文後不能編輯、補充，講師只能從後台回覆
+**已做**：`questions` / `answers` 各加一欄 `edited_at`（migration `0004_qa_edits`），前台問答面板補上四件事。
+
+- 自己的提問與回覆可以就地編輯，改過會顯示「已編輯」。只有作者能改內容——助教與講師能刪、能採納，但不能替別人改字，不然討論串會變成沒人知道原本寫了什麼。
+- 每一串都有回覆框，任何登入者都能直接在前台回。助教以上不受「開放發問」開關與限流影響，所以講師不用再繞去後台。
+- 刪除：自己的回覆隨時能刪；整串問題只有在還沒有別人回覆時作者才能撤回（已經有人花時間回答就擋下來，回 400），講師以上不受限。刪掉被採納的那則會一併清空 `acceptedAnswerId`。
+- 標最佳解答**不代表討論結束**：採納後回覆框還在，作者可以改標別則或按「取消最佳解答」（`acceptedAnswerId: null`），後台問答頁同樣多了取消的按鈕。
+
+問答一律要登入；本機暫存的訪客問題已在 2026-09-12 移除。
+
+### 2.2c ✅ 停權帳號登入時看不出原因
+**已做**：`loginWithPassword()` 拆成兩段——帳號不存在或密碼錯還是一律回 401「帳號或密碼不對」（不能拿來探帳號），**密碼驗過之後**才回 403 並說明已被停權，訊息帶站點設定裡的 Discord 邀請連結當求助管道。
+
+說法統一寫在 `src/lib/ban-notice.ts`，另外兩條路也接上：Discord 登入遇到停權帳號不設 cookie，導回 `/?login=banned` 讓登入視窗畫紅色說明；用到一半被停權時 `GET /api/me` 回 `{ authenticated: false, banned: true }` 並清掉 cookie，前台自動彈出同一段說明（以前只會安靜地變成訪客）。
 
 ### 2.3 ✅ 課程沒有搜尋
 **已做**：抽出 `src/components/learn/track-list.tsx`，搜尋比對課名、英文名、標語、產出、大綱與底下每一課的標題。
@@ -209,7 +224,7 @@ pnpm db:clean-demo --yes   # 確認後才真的刪
 ⚠️ OG 圖是純英文的：`ImageResponse` 底層的 Satori 內建字型沒有中文字符，中文會變成空框。要放中文標語得先把 Noto Sans TC 的 `.ttf` 放進 `assets/` 再傳給 `fonts`。
 
 ### 4.4 沒有任何測試
-一個測試都沒有。改動 flag 比對、XP 計算、進度合併這種邏輯時沒有任何保護。
+一個測試都沒有。改動 flag 比對、XP 計算、檢查站判分這種邏輯時沒有任何保護。
 
 建議至少補：`repo/learner.ts` 的 `attemptFlag`、`answerCheckpoint`、`unlockHint` 三個函式的單元測試（用 PGlite 跑，很快）。
 
@@ -280,6 +295,15 @@ GitHub 上原本只有備份與週結算，push 壞掉的 code 沒人擋。
 2. 或者把週結算改成 Vercel Cron + 內部呼叫，完全不開 HTTP 端點。
 
 估時：30 分鐘。
+
+---
+
+### 5.6 ✅ 檢查站答案原本在瀏覽器比對
+**已修**（2026-09-12）。原本 `getTracksPublic()` 把每個檢查站的 `answer` 與 `explain` 一起送到瀏覽器，`POST /api/progress` 的 `checkpoint` 又只收 `index` 就發 XP，等於任何登入者用 curl 跑一輪就能把全站檢查站的 XP 領完。
+
+改法：公開的課程資料拿掉 `answer` / `explain`；`checkpoint` 動作改收 `choice`，由 `repo/learner.ts` 的 `answerCheckpoint()` 比對，答錯不寫 ledger 也不回傳解析；`checkpoint-quiz.tsx` 改成把選擇送到伺服器再依回應顯示對錯與解析。
+
+驗收：`curl` 對同一站送四個選項，只有正解回 `correct: true` 且只加一次 XP。
 
 ---
 

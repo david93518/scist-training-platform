@@ -3,23 +3,31 @@
 import { useState } from "react";
 import { Flag, Check, X, Loader2, PartyPopper, Droplet } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
-import { checkFlagLocally, type AttemptResult } from "@/lib/flags";
+import type { AttemptResult } from "@/lib/flags";
 import { api } from "@/lib/api";
 import type { Challenge } from "@/data/challenges";
 import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
+import { LoginWall } from "@/components/login-wall";
 import { cn } from "@/lib/utils";
 
 type Feedback = { ok: boolean; message: string; firstBlood?: boolean } | null;
 
+/** Flag submission. Every attempt goes to the server; the browser holds no flag or digest. */
 export function FlagSubmit({ challenge }: { challenge: Challenge }) {
   const got = useProgress((s) => s.solved[challenge.slug]);
   const solveFlag = useProgress((s) => s.solveFlag);
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const hydrated = useHydrated();
 
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+
+  // the page is gated in src/proxy.ts; this only shows when the session died mid-page
+  if (hydrated && sessionChecked && !authenticated) {
+    return <LoginWall title="登入後才能提交 Flag" desc="解題會記到你的帳號、排行榜與 First Blood。登入或註冊後會直接回到這一題。" />;
+  }
 
   const solvedIds = hydrated ? (got ?? []) : [];
   const allDone = solvedIds.length === challenge.flags.length;
@@ -32,9 +40,7 @@ export function FlagSubmit({ challenge }: { challenge: Challenge }) {
 
     let res: AttemptResult;
     try {
-      res = authenticated
-        ? await api<AttemptResult>("/api/challenges/" + challenge.slug + "/attempt", { body: { flag: value } })
-        : await checkFlagLocally(challenge, value);
+      res = await api<AttemptResult>("/api/challenges/" + challenge.slug + "/attempt", { body: { flag: value } });
     } catch (err) {
       setFeedback({ ok: false, message: err instanceof Error ? err.message : "送出失敗，再試一次。" });
       setBusy(false);
@@ -48,7 +54,7 @@ export function FlagSubmit({ challenge }: { challenge: Challenge }) {
       solveFlag(challenge.slug, res.flagId, points, challenge.name);
       setFeedback({ ok: true, message: res.message + " +" + points + " 分" + refund, firstBlood: res.firstBlood });
       setValue("");
-      if (authenticated) void refreshProfile(true);
+      void refreshProfile(true);
     } else if (res.status === "already_solved") {
       setFeedback({ ok: true, message: res.message });
     } else {
@@ -177,9 +183,7 @@ export function FlagSubmit({ challenge }: { challenge: Challenge }) {
       ) : null}
 
       <p className="mt-3 border-t border-line pt-3 font-mono text-[11px] leading-relaxed text-fg-3">
-        {hydrated && authenticated
-          ? "Flag 在伺服器端比對，解出會記到你的帳號、排行榜與 First Blood。"
-          : "未登入：只在瀏覽器比對雜湊，不會記到排行榜。登入後解題才算數。"}
+        Flag 在伺服器端比對，解出會記到你的帳號、排行榜與 First Blood。
       </p>
     </div>
   );

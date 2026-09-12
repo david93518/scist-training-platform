@@ -19,6 +19,10 @@ export async function listInstructorsAdmin(): Promise<AdminInstructor[]> {
   }));
 }
 
+export async function findInstructorAdmin(id: string): Promise<AdminInstructor | null> {
+  return (await listInstructorsAdmin()).find((i) => i.id === id) ?? null;
+}
+
 export async function saveInstructor(input: AdminInstructor): Promise<AdminInstructor> {
   const db = await getDb();
   const row = {

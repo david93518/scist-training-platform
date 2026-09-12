@@ -23,7 +23,8 @@ export const CATEGORY_META: Record<
 
 export interface Hint {
   id: string;
-  text: string;
+  /** seed only. The browser gets the text from /api/challenges/{slug}/hints after paying for it */
+  text?: string;
   /** XP deducted when revealed */
   cost: number;
 }
@@ -31,7 +32,8 @@ export interface Hint {
 export interface FlagSpec {
   id: string;
   label: string;
-  sha256: string;
+  /** seed only. Never sent to the browser: flags are checked on the server */
+  sha256?: string;
   points: number;
 }
 

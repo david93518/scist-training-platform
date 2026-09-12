@@ -7,14 +7,13 @@ import type { Role } from "@/admin/types";
 import { schoolById } from "@/data/schools";
 import { HexAvatar } from "@/components/ui/primitives";
 import { PageTitle, Table, Td, Th, Tr, ToastHost, useAsync, useToast } from "@/components/admin/ui";
-import { ROLE_COLOR, ROLE_LABEL } from "@/components/admin/admin-shell";
 import { UserDetailDrawer } from "@/components/admin/user-detail";
 import { rankFor } from "@/lib/xp";
 import { useRanks } from "@/components/settings-provider";
+import { can, ROLE_COLOR, ROLE_LABEL, ROLES } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
-
-const ROLES: Role[] = ["student", "ta", "instructor", "admin"];
 
 export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
   const api = getAdminApi();
@@ -22,6 +21,7 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
   const users = useAsync(() => api.users.list());
   const now = useNow(60_000);
   const ranks = useRanks();
+  const manage = can(useProgress((s) => s.role), "users.manage");
   const [q, setQ] = useState("");
   const [role, setRole] = useState<Role | "all">("all");
   const [selected, setSelected] = useState<string | null>(initialUserId ?? null);
@@ -50,7 +50,11 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
       <PageTitle
         kicker="USERS"
         title="學員與角色"
-        desc="註冊後預設是學員。助教可以回答問題，講師可以上架內容，管理員可以改設定、角色與重設密碼。點任何一位看進度、解題與 XP 紀錄。"
+        desc={
+          manage
+            ? "註冊後預設是學員。助教可以回答問題與處理靶機，講師可以上架內容，管理員可以改設定、角色與重設密碼。點任何一位看進度、解題與 XP 紀錄。"
+            : "註冊後預設是學員。這裡是唯讀的，改角色、停權、調 XP 與重設密碼只有管理員能做。點任何一位看進度、解題與 XP 紀錄。"
+        }
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
@@ -157,22 +161,37 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
                 </Td>
                 <Td className="font-mono text-[11.5px] text-fg-3">{u.lastSeenAt ? relativeTime(u.lastSeenAt, now) : "—"}</Td>
                 <Td>
-                  <select
-                    value={u.role}
-                    onChange={async (e) => {
-                      await api.users.setRole(u.id, e.target.value as Role);
-                      await users.reload();
-                      toast(u.handle + " 已改為" + ROLE_LABEL[e.target.value]);
-                    }}
-                    className="h-8 rounded-md border border-white/[0.08] bg-bg-0 px-2 text-[12.5px] font-bold outline-none"
-                    style={{ color: ROLE_COLOR[u.role] }}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABEL[r]}
-                      </option>
-                    ))}
-                  </select>
+                  {manage ? (
+                    <select
+                      value={u.role}
+                      onChange={async (e) => {
+                        const next = e.target.value as Role;
+                        try {
+                          await api.users.setRole(u.id, next);
+                        } catch (err) {
+                          // e.g. an admin trying to demote themselves: the select
+                          // used to snap back with no explanation at all
+                          toast(err instanceof Error ? err.message : "改角色失敗", "err");
+                          await users.reload();
+                          return;
+                        }
+                        await users.reload();
+                        toast(u.handle + " 已改為" + ROLE_LABEL[next]);
+                      }}
+                      className="h-8 rounded-md border border-white/[0.08] bg-bg-0 px-2 text-[12.5px] font-bold outline-none"
+                      style={{ color: ROLE_COLOR[u.role] }}
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-[12.5px] font-bold" style={{ color: ROLE_COLOR[u.role] }}>
+                      {ROLE_LABEL[u.role]}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <div className="flex justify-end gap-1">
@@ -183,17 +202,24 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
                       <Eye size={13} />
                       詳情
                     </button>
-                    <button
-                      onClick={async () => {
-                        await api.users.setBanned(u.id, !u.bannedAt);
-                        await users.reload();
-                        toast(u.bannedAt ? "已解除停權" : "已停權", u.bannedAt ? "ok" : "info");
-                      }}
-                      className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-bold", u.bannedAt ? "text-accent hover:bg-accent/10" : "text-fg-3 hover:bg-red/10 hover:text-red")}
-                    >
-                      {u.bannedAt ? <Undo2 size={13} /> : <Ban size={13} />}
-                      {u.bannedAt ? "解除停權" : "停權"}
-                    </button>
+                    {manage ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.users.setBanned(u.id, !u.bannedAt);
+                          } catch (err) {
+                            toast(err instanceof Error ? err.message : "停權失敗", "err");
+                            return;
+                          }
+                          await users.reload();
+                          toast(u.bannedAt ? "已解除停權" : "已停權", u.bannedAt ? "ok" : "info");
+                        }}
+                        className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-bold", u.bannedAt ? "text-accent hover:bg-accent/10" : "text-fg-3 hover:bg-red/10 hover:text-red")}
+                      >
+                        {u.bannedAt ? <Undo2 size={13} /> : <Ban size={13} />}
+                        {u.bannedAt ? "解除停權" : "停權"}
+                      </button>
+                    ) : null}
                   </div>
                 </Td>
               </Tr>
@@ -202,7 +228,11 @@ export function UsersAdmin({ initialUserId }: { initialUserId?: string }) {
         </tbody>
       </Table>
       <p className="mt-4 font-mono text-[11.5px] text-fg-3">
-        {api.mode === "local" ? "本機模式顯示的是示範名單。接上 API 後這裡是真實帳號。" : "角色變更後，對方下次載入頁面（或重新登入）就會套用；進後台前請先重新整理一次。"}
+        {api.mode === "local"
+          ? "本機模式顯示的是示範名單。接上 API 後這裡是真實帳號。"
+          : manage
+            ? "角色變更後，對方下次載入頁面（或重新登入）就會套用；進後台前請先重新整理一次。"
+            : "唯讀檢視。要調角色或停權請找管理員。"}
       </p>
 
       <UserDetailDrawer userId={selected} onClose={() => setSelected(null)} onChanged={() => users.reload()} />

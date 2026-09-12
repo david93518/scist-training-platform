@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Lightbulb, Loader2, Lock, Minus } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
@@ -8,6 +8,11 @@ import type { Challenge } from "@/data/challenges";
 import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
 import { cn } from "@/lib/utils";
 
+/**
+ * Paid hints. The public challenge data carries only ids and costs; the text
+ * comes from the server once it has been unlocked, and is fetched back for
+ * hints unlocked on an earlier visit.
+ */
 export function HintsPanel({ challenge }: { challenge: Challenge }) {
   const revealed = useProgress((s) => s.revealedHints[challenge.slug]);
   const reveal = useProgress((s) => s.revealHint);
@@ -15,22 +20,31 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
   const hydrated = useHydrated();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // hint text handed back by the server (the public data already carries it,
-  // but the server copy is authoritative once signed in)
   const [texts, setTexts] = useState<Record<string, string>>({});
 
-  if (challenge.hints.length === 0) return null;
   const open = hydrated ? (revealed ?? []) : [];
+  const missing = open.some((id) => !(id in texts));
 
-  const unlock = async (hintId: string, cost: number) => {
+  useEffect(() => {
+    if (!authenticated || !missing) return;
+    let alive = true;
+    api<{ hints: { id: string; text: string }[] }>("/api/challenges/" + challenge.slug + "/hints")
+      .then((res) => {
+        if (alive) setTexts((t) => ({ ...t, ...Object.fromEntries(res.hints.map((h) => [h.id, h.text])) }));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [authenticated, missing, challenge.slug]);
+
+  if (challenge.hints.length === 0) return null;
+
+  const unlock = async (hintId: string) => {
     setError(null);
-    if (!authenticated) {
-      reveal(challenge.slug, hintId, cost);
-      return;
-    }
     setBusy(hintId);
     try {
-      const res = await api<{ text: string; cost: number }>("/api/challenges/" + challenge.slug + "/hints/" + hintId, { method: "POST" });
+      const res = await api<{ text: string; cost: number }>("/api/challenges/" + challenge.slug + "/hints", { body: { hintId } });
       setTexts((t) => ({ ...t, [hintId]: res.text }));
       reveal(challenge.slug, hintId, res.cost);
       void refreshProfile(true);
@@ -80,14 +94,21 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
               </div>
 
               {isOpen ? (
-                <p className="mt-2 text-[13px] leading-relaxed text-fg-2">{texts[h.id] ?? h.text}</p>
+                texts[h.id] !== undefined ? (
+                  <p className="mt-2 text-[13px] leading-relaxed text-fg-2">{texts[h.id]}</p>
+                ) : (
+                  <p className="mt-2 flex items-center gap-1.5 font-mono text-[11.5px] text-fg-3">
+                    <Loader2 size={11} className="animate-spin" />
+                    載入中
+                  </p>
+                )
               ) : (
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-2.5 w-full"
-                  disabled={!prevOpen || busy === h.id}
-                  onClick={() => unlock(h.id, h.cost)}
+                  disabled={!prevOpen || busy === h.id || !authenticated}
+                  onClick={() => unlock(h.id)}
                 >
                   {busy === h.id ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
                   {prevOpen ? "解鎖這則提示" : "先解鎖上一則"}

@@ -8,10 +8,14 @@ export interface Answer {
   role: "助教" | "講師" | "學員";
   body: string;
   createdAt: string;
+  /** 作者改過的時間；有值就在畫面上標「已編輯」 */
+  editedAt?: string;
   votes: number;
   accepted?: boolean;
   /** the reader already voted this up */
   voted?: boolean;
+  /** the reader wrote this, so they may edit or delete it */
+  mine?: boolean;
 }
 
 export interface Question {
@@ -22,10 +26,11 @@ export interface Question {
   body: string;
   author: string;
   createdAt: string;
+  editedAt?: string;
   votes: number;
   answers: Answer[];
   voted?: boolean;
-  /** the reader asked this, so they may accept an answer */
+  /** the reader asked this, so they may accept an answer, edit or delete it */
   mine?: boolean;
 }
 

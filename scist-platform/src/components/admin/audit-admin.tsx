@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronRight, RefreshCw, Search } from "lucide-react";
 import { getAdminApi } from "@/admin/api";
-import type { AuditAction } from "@/admin/types";
+import type { AuditAction, AuditEntry } from "@/admin/types";
 import { Button, HexAvatar } from "@/components/ui/primitives";
 import { EmptyState, PageTitle, Table, Td, Th, Tr, ToastHost, useAsync } from "@/components/admin/ui";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
@@ -62,17 +62,26 @@ function hrefFor(entity: string, id: string | null) {
   }
 }
 
+/** 舊紀錄只存了一句說明，沒有欄位明細 */
+const changesOf = (e: AuditEntry) => e.changes ?? [];
+
+const haystack = (e: AuditEntry) =>
+  [e.actorHandle, e.label, e.entityId ?? "", ...changesOf(e).flatMap((c) => [c.label, c.before, c.after])].join(" ").toLowerCase();
+
 export function AuditAdmin() {
   const api = getAdminApi();
   const log = useAsync(() => api.audit.list(300));
   const now = useNow(60_000);
   const [entity, setEntity] = useState<string>("all");
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState<string[]>([]);
+
+  const toggle = (id: string) => setOpen((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const visible = useMemo(() => {
     let l = log.data ?? [];
     if (entity !== "all") l = l.filter((e) => e.entity === entity);
-    if (q) l = l.filter((e) => (e.actorHandle + " " + e.label + " " + (e.entityId ?? "")).toLowerCase().includes(q.toLowerCase()));
+    if (q) l = l.filter((e) => haystack(e).includes(q.toLowerCase()));
     return l;
   }, [log.data, entity, q]);
 
@@ -83,7 +92,7 @@ export function AuditAdmin() {
       <PageTitle
         kicker="AUDIT LOG"
         title="操作紀錄"
-        desc="誰在什麼時候改了什麼。內容、角色、XP、靶機的變更都會留下一筆，出事的時候從這裡回推。"
+        desc="誰在什麼時候改了什麼。內容、角色、XP、靶機的變更都會留下一筆，展開就看得到每個欄位改前改後的值。"
         actions={
           <Button variant="outline" size="sm" onClick={() => log.reload()}>
             <RefreshCw size={13} className={log.loading ? "animate-spin" : ""} />
@@ -95,7 +104,12 @@ export function AuditAdmin() {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-white/[0.08] bg-bg-0 px-3">
           <Search size={14} className="text-fg-3" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜尋操作者、說明、ID" className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-fg-3" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜尋操作者、說明、ID、變更內容"
+            className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-fg-3"
+          />
         </div>
         <div className="flex gap-1 overflow-x-auto no-scrollbar">
           {entities.map((k) => (
@@ -127,37 +141,67 @@ export function AuditAdmin() {
             {visible.map((e) => {
               const a = ACTION[e.action] ?? { label: e.action, color: "#6b7a8e" };
               const href = hrefFor(e.entity, e.entityId);
+              const changes = changesOf(e);
+              const expanded = open.includes(e.id);
               return (
-                <Tr key={e.id}>
-                  <Td>
-                    <div className="font-mono text-[12px]">{relativeTime(e.at, now)}</div>
-                    <div className="font-mono text-[10.5px] text-fg-3">{formatDateTime(e.at)}</div>
-                  </Td>
-                  <Td>
-                    <span className="flex items-center gap-2 font-mono text-[12.5px] font-bold">
-                      <HexAvatar seed={e.actorHandle} size={24} />
-                      {e.actorHandle}
-                    </span>
-                  </Td>
-                  <Td>
-                    <span className="inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10.5px] tracking-wider" style={{ color: a.color, borderColor: a.color + "55", background: a.color + "14" }}>
-                      {a.label}
-                    </span>
-                  </Td>
-                  <Td>
-                    <span className="text-[12.5px] text-fg-2">{ENTITY[e.entity] ?? e.entity}</span>
-                    {e.entityId ? (
-                      href ? (
-                        <Link href={href} className="ml-2 font-mono text-[11px] text-fg-3 hover:text-accent">
-                          {e.entityId}
-                        </Link>
-                      ) : (
-                        <span className="ml-2 font-mono text-[11px] text-fg-3">{e.entityId}</span>
-                      )
-                    ) : null}
-                  </Td>
-                  <Td className="max-w-[360px] truncate text-[13px]">{e.label}</Td>
-                </Tr>
+                <Fragment key={e.id}>
+                  <Tr>
+                    <Td>
+                      <div className="font-mono text-[12px]">{relativeTime(e.at, now)}</div>
+                      <div className="font-mono text-[10.5px] text-fg-3">{formatDateTime(e.at)}</div>
+                    </Td>
+                    <Td>
+                      <span className="flex items-center gap-2 font-mono text-[12.5px] font-bold">
+                        <HexAvatar seed={e.actorHandle} size={24} />
+                        {e.actorHandle}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span className="inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10.5px] tracking-wider" style={{ color: a.color, borderColor: a.color + "55", background: a.color + "14" }}>
+                        {a.label}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span className="text-[12.5px] text-fg-2">{ENTITY[e.entity] ?? e.entity}</span>
+                      {e.entityId ? (
+                        href ? (
+                          <Link href={href} className="ml-2 font-mono text-[11px] text-fg-3 hover:text-accent">
+                            {e.entityId}
+                          </Link>
+                        ) : (
+                          <span className="ml-2 font-mono text-[11px] text-fg-3">{e.entityId}</span>
+                        )
+                      ) : null}
+                    </Td>
+                    <Td className="max-w-[380px]">
+                      <div className="truncate text-[13px]">{e.label}</div>
+                      {changes.length > 0 ? (
+                        <button onClick={() => toggle(e.id)} className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] text-fg-3 hover:text-accent">
+                          <ChevronRight size={12} className={cn("transition-transform", expanded && "rotate-90")} />
+                          {changes.length} 個欄位變更
+                        </button>
+                      ) : null}
+                    </Td>
+                  </Tr>
+                  {expanded ? (
+                    <tr className="border-t border-white/[0.06] bg-white/[0.02]">
+                      <td colSpan={5} className="px-4 py-3">
+                        <ul className="space-y-2">
+                          {changes.map((c) => (
+                            <li key={c.field} className="grid gap-0.5 sm:grid-cols-[150px_1fr] sm:gap-3">
+                              <span className="mono-label pt-0.5">{c.label}</span>
+                              <span className="min-w-0 text-[12.5px] leading-relaxed">
+                                <span className="text-fg-3 line-through decoration-white/25">{c.before}</span>
+                                <span className="mx-2 text-fg-3">→</span>
+                                <span className="text-accent">{c.after}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               );
             })}
           </tbody>

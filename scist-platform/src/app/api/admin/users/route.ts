@@ -1,8 +1,8 @@
-import { requireRole } from "@/server/auth";
+import { requireCap } from "@/server/auth";
 import { route, json } from "@/server/http";
 import { listUsersAdmin } from "@/server/repo/users";
 
 export const GET = route(async () => {
-  await requireRole("instructor");
+  await requireCap("users.read");
   return json(await listUsersAdmin());
 });

@@ -142,7 +142,7 @@ export function TrackList({ tracks, instructors }: { tracks: Track[]; instructor
                 </div>
 
                 <div className="flex shrink-0 flex-col items-start gap-3 lg:w-[190px] lg:items-stretch">
-                  <TrackProgressPill track={t} />
+                  <TrackProgressPill track={t} className="lg:w-[170px]" />
                   {ins ? (
                     <div className="text-[12.5px] text-fg-3">
                       講師 <span className="font-mono text-fg-2">@{ins.handle}</span>

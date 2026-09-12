@@ -15,6 +15,7 @@ import { useAdminStore, buildSeed } from "./store";
 import { useProgress } from "@/store/progress";
 import { CATEGORY_META, type Category } from "@/data/challenges";
 import { schoolById } from "@/data/schools";
+import { describeDelete, describeSave, diffSettings, ROLE } from "@/lib/audit-diff";
 import { seeded } from "@/lib/utils";
 import type {
   AdminAnalytics,
@@ -30,6 +31,7 @@ import type {
   AdminUser,
   AdminUserDetail,
   AuditAction,
+  AuditChange,
   AuditEntry,
   IntegrationStatus,
   Role,
@@ -46,28 +48,28 @@ export interface AdminApi {
   tracks: {
     list(): Promise<AdminTrack[]>;
     save(track: AdminTrack): Promise<AdminTrack>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   lessons: {
     list(): Promise<AdminLesson[]>;
     save(lesson: AdminLesson): Promise<AdminLesson>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
     reorder(moduleId: string, ids: string[]): Promise<void>;
   };
   challenges: {
     list(): Promise<AdminChallenge[]>;
     save(challenge: AdminChallenge): Promise<AdminChallenge>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   events: {
     list(): Promise<AdminEvent[]>;
     save(event: AdminEvent): Promise<AdminEvent>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   instructors: {
     list(): Promise<AdminInstructor[]>;
     save(instructor: AdminInstructor): Promise<AdminInstructor>;
-    remove(id: string): Promise<void>;
+    remove(id: string, force?: boolean): Promise<void>;
   };
   users: {
     list(): Promise<AdminUser[]>;
@@ -81,7 +83,8 @@ export interface AdminApi {
   questions: {
     list(): Promise<AdminQuestion[]>;
     answer(questionId: string, body: string, author: { handle: string; role: string }): Promise<void>;
-    accept(questionId: string, answerId: string): Promise<void>;
+    /** `null` 是取消採納，標了最佳解答不代表討論就結束 */
+    accept(questionId: string, answerId: string | null): Promise<void>;
     remove(questionId: string): Promise<void>;
   };
   instances: {
@@ -133,10 +136,16 @@ function store() {
 }
 
 /** every local mutation leaves a line in the audit log, same as the API does */
-function log(action: AuditAction, entity: string, entityId: string | null, label: string) {
+function log(action: AuditAction, entity: string, entityId: string | null, label: string, changes: AuditChange[] = []) {
   const s = useAdminStore.getState();
-  const entry: AuditEntry = { id: nanoid(10), actorHandle: useProgress.getState().handle || "guest", action, entity, entityId, label, at: now() };
+  const entry: AuditEntry = { id: nanoid(10), actorHandle: useProgress.getState().handle || "guest", action, entity, entityId, label, changes, at: now() };
   s.set("audit", [entry, ...s.audit].slice(0, 500));
+}
+
+/** 存檔的紀錄要帶欄位級明細，跟 API 那邊算法一致 */
+function logSave(entity: string, entityId: string, before: unknown, after: unknown) {
+  const { label, changes } = describeSave(entity, before, after);
+  log("save", entity, entityId, label, changes);
 }
 
 const DIFF_FACTOR = { easy: 1.5, medium: 2.4, hard: 3.6, insane: 5 } as const;
@@ -250,18 +259,18 @@ export const localApi: AdminApi = {
     async save(track) {
       await delay();
       const s = store();
-      const exists = s.tracks.some((t) => t.id === track.id);
-      const next = exists ? s.tracks.map((t) => (t.id === track.id ? track : t)) : [...s.tracks, track];
+      const before = s.tracks.find((t) => t.id === track.id) ?? null;
+      const next = before ? s.tracks.map((t) => (t.id === track.id ? track : t)) : [...s.tracks, track];
       s.set("tracks", next);
-      log("save", "track", track.id, track.name);
+      logSave("track", track.id, before, track);
       return track;
     },
     async remove(id) {
       const s = store();
-      const name = s.tracks.find((t) => t.id === id)?.name ?? id;
+      const before = s.tracks.find((t) => t.id === id) ?? null;
       s.set("tracks", s.tracks.filter((t) => t.id !== id));
       s.set("lessons", s.lessons.filter((l) => l.trackId !== id));
-      log("delete", "track", id, name);
+      log("delete", "track", id, describeDelete(before, id));
     },
   },
 
@@ -273,16 +282,16 @@ export const localApi: AdminApi = {
       await delay();
       const s = store();
       const saved = { ...lesson, updatedAt: now() };
-      const exists = s.lessons.some((l) => l.id === lesson.id);
-      s.set("lessons", exists ? s.lessons.map((l) => (l.id === lesson.id ? saved : l)) : [...s.lessons, saved]);
-      log("save", "lesson", lesson.id, lesson.title);
+      const before = s.lessons.find((l) => l.id === lesson.id) ?? null;
+      s.set("lessons", before ? s.lessons.map((l) => (l.id === lesson.id ? saved : l)) : [...s.lessons, saved]);
+      logSave("lesson", lesson.id, before, saved);
       return saved;
     },
     async remove(id) {
       const s = store();
-      const title = s.lessons.find((l) => l.id === id)?.title ?? id;
+      const before = s.lessons.find((l) => l.id === id) ?? null;
       s.set("lessons", s.lessons.filter((l) => l.id !== id));
-      log("delete", "lesson", id, title);
+      log("delete", "lesson", id, describeDelete(before, id));
     },
     async reorder(moduleId, ids) {
       const s = store();
@@ -311,16 +320,16 @@ export const localApi: AdminApi = {
         }),
         updatedAt: now(),
       };
-      const exists = s.challenges.some((c) => c.id === challenge.id);
-      s.set("challenges", exists ? s.challenges.map((c) => (c.id === challenge.id ? saved : c)) : [...s.challenges, saved]);
-      log("save", "challenge", challenge.id, challenge.name);
+      const before = s.challenges.find((c) => c.id === challenge.id) ?? null;
+      s.set("challenges", before ? s.challenges.map((c) => (c.id === challenge.id ? saved : c)) : [...s.challenges, saved]);
+      logSave("challenge", challenge.id, before, saved);
       return saved;
     },
     async remove(id) {
       const s = store();
-      const name = s.challenges.find((c) => c.id === id)?.name ?? id;
+      const before = s.challenges.find((c) => c.id === id) ?? null;
       s.set("challenges", s.challenges.filter((c) => c.id !== id));
-      log("delete", "challenge", id, name);
+      log("delete", "challenge", id, describeDelete(before, id));
     },
   },
 
@@ -331,16 +340,16 @@ export const localApi: AdminApi = {
     async save(event) {
       await delay();
       const s = store();
-      const exists = s.events.some((e) => e.id === event.id);
-      s.set("events", exists ? s.events.map((e) => (e.id === event.id ? event : e)) : [...s.events, event]);
-      log("save", "event", event.id, event.title);
+      const before = s.events.find((e) => e.id === event.id) ?? null;
+      s.set("events", before ? s.events.map((e) => (e.id === event.id ? event : e)) : [...s.events, event]);
+      logSave("event", event.id, before, event);
       return event;
     },
     async remove(id) {
       const s = store();
-      const title = s.events.find((e) => e.id === id)?.title ?? id;
+      const before = s.events.find((e) => e.id === id) ?? null;
       s.set("events", s.events.filter((e) => e.id !== id));
-      log("delete", "event", id, title);
+      log("delete", "event", id, describeDelete(before, id));
     },
   },
 
@@ -351,19 +360,19 @@ export const localApi: AdminApi = {
     async save(instructor) {
       await delay();
       const s = store();
-      const exists = s.instructors.some((i) => i.id === instructor.id);
-      s.set("instructors", exists ? s.instructors.map((i) => (i.id === instructor.id ? instructor : i)) : [...s.instructors, instructor]);
-      log("save", "instructor", instructor.id, instructor.name);
+      const before = s.instructors.find((i) => i.id === instructor.id) ?? null;
+      s.set("instructors", before ? s.instructors.map((i) => (i.id === instructor.id ? instructor : i)) : [...s.instructors, instructor]);
+      logSave("instructor", instructor.id, before, instructor);
       return instructor;
     },
     async remove(id) {
       const s = store();
-      const name = s.instructors.find((i) => i.id === id)?.name ?? id;
+      const before = s.instructors.find((i) => i.id === id) ?? null;
       s.set("instructors", s.instructors.filter((i) => i.id !== id));
       s.set("tracks", s.tracks.map((t) => (t.instructorId === id ? { ...t, instructorId: null } : t)));
       s.set("challenges", s.challenges.map((c) => (c.authorId === id ? { ...c, authorId: null } : c)));
       s.set("events", s.events.map((e) => (e.hostId === id ? { ...e, hostId: null } : e)));
-      log("delete", "instructor", id, name);
+      log("delete", "instructor", id, describeDelete(before, id));
     },
   },
 
@@ -407,7 +416,9 @@ export const localApi: AdminApi = {
       const s = store();
       const u = s.users.find((x) => x.id === id);
       s.set("users", s.users.map((x) => (x.id === id ? { ...x, role } : x)));
-      log("role", "user", id, (u?.handle ?? id) + " 角色改為 " + role);
+      log("role", "user", id, (u?.handle ?? id) + " 的角色 " + ROLE(u?.role) + " → " + ROLE(role), [
+        { field: "role", label: "角色", before: ROLE(u?.role), after: ROLE(role) },
+      ]);
     },
     async setBanned(id, banned) {
       const s = store();
@@ -427,7 +438,7 @@ export const localApi: AdminApi = {
       log("xp", "user", id, u.handle + " " + (delta > 0 ? "+" : "") + delta + " XP · " + reason);
       return xp;
     },
-    async setPassword(id, _password) {
+    async setPassword(id) {
       const s = store();
       const u = s.users.find((x) => x.id === id);
       s.set("users", s.users.map((x) => (x.id === id ? { ...x, hasPassword: true } : x)));
@@ -445,7 +456,7 @@ export const localApi: AdminApi = {
         "questions",
         s.questions.map((q) =>
           q.id === questionId
-            ? { ...q, answers: [...q.answers, { id: nanoid(8), authorHandle: author.handle, authorRole: author.role, body, createdAt: now(), votes: 0 }] }
+            ? { ...q, answers: [...q.answers, { id: nanoid(8), authorHandle: author.handle, authorRole: author.role, body, createdAt: now(), editedAt: null, votes: 0 }] }
             : q,
         ),
       );
@@ -454,7 +465,8 @@ export const localApi: AdminApi = {
     async accept(questionId, answerId) {
       const s = store();
       s.set("questions", s.questions.map((q) => (q.id === questionId ? { ...q, acceptedAnswerId: answerId } : q)));
-      log("accept", "question", questionId, s.questions.find((q) => q.id === questionId)?.title ?? questionId);
+      const title = s.questions.find((q) => q.id === questionId)?.title ?? questionId;
+      log("accept", "question", questionId, answerId ? title : title + "（取消最佳解答）");
     },
     async remove(questionId) {
       const s = store();
@@ -497,8 +509,10 @@ export const localApi: AdminApi = {
     },
     async save(settings) {
       await delay();
-      store().set("settings", settings);
-      log("settings", "settings", null, "更新站點設定");
+      const s = store();
+      const changes = diffSettings(s.settings, settings);
+      s.set("settings", settings);
+      log("settings", "settings", null, changes.length ? "更新站點設定 · " + changes.map((c) => c.label).join("、") : "站點設定（內容沒有變更）", changes);
       return settings;
     },
   },
@@ -613,18 +627,18 @@ export const httpApi: AdminApi = {
   tracks: {
     list: () => http("/tracks"),
     save: (t) => http("/tracks/" + t.id, { method: "PUT", body: json(t) }),
-    remove: (id) => http("/tracks/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/tracks/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
   },
   lessons: {
     list: () => http("/lessons"),
     save: (l) => http("/lessons/" + l.id, { method: "PUT", body: json(l) }),
-    remove: (id) => http("/lessons/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/lessons/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
     reorder: (moduleId, ids) => http("/lessons/reorder", { method: "POST", body: json({ moduleId, ids }) }),
   },
   challenges: {
     list: () => http("/challenges"),
     save: (c) => http("/challenges/" + c.id, { method: "PUT", body: json(c) }),
-    remove: (id) => http("/challenges/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/challenges/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
   },
   events: {
     list: () => http("/events"),

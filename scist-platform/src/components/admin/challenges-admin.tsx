@@ -9,11 +9,14 @@ import { CATEGORY_META, type Category } from "@/data/challenges";
 import { Icon } from "@/components/ui/icon";
 import { buttonClass, DifficultyBadge } from "@/components/ui/primitives";
 import { PageTitle, StatusBadge, Table, Td, Th, Tr, ToastHost, useAsync } from "@/components/admin/ui";
+import { can } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn, formatDate } from "@/lib/utils";
 
 export function ChallengesAdmin() {
   const api = getAdminApi();
   const list = useAsync(() => api.challenges.list());
+  const mayImport = can(useProgress((s) => s.role), "content.import");
   const [cat, setCat] = useState<Category | "all">("all");
   const [status, setStatus] = useState<Status | "all">("all");
   const [q, setQ] = useState("");
@@ -37,10 +40,12 @@ export function ChallengesAdmin() {
         desc={<>共 {total} 題，{published} 題已發布。Flag 存的是 SHA-256，這裡看不到明文；提示會扣 XP；靶機類題目需要設定 Docker 映像。</>}
         actions={
           <>
-            <Link href="/admin/settings#import" className={buttonClass("outline", "sm")}>
-              <Upload size={14} />
-              匯入 CTFd
-            </Link>
+            {mayImport ? (
+              <Link href="/admin/settings#import" className={buttonClass("outline", "sm")}>
+                <Upload size={14} />
+                匯入 CTFd
+              </Link>
+            ) : null}
             <Link href="/admin/challenges/new" className={buttonClass("primary", "sm")}>
               <Plus size={14} />
               新增題目

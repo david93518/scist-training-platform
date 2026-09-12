@@ -99,15 +99,16 @@ export default async function TrackPage(props: PageProps<"/learn/[track]">) {
           </div>
 
           <aside className="flex flex-col gap-5">
-            <div className="card p-6">
+            <div className="card flex flex-col gap-5 p-6">
+              {/* the pill renders nothing for visitors, so the button then leads the card */}
               <TrackProgressPill track={track} />
               {first ? (
-                <LinkButton href={"/learn/" + track.slug + "/" + first.slug} className="mt-5 w-full shine">
+                <LinkButton href={"/learn/" + track.slug + "/" + first.slug} className="w-full shine">
                   開始上課
                   <ArrowRight size={15} />
                 </LinkButton>
               ) : null}
-              <div className="mt-5 flex items-start gap-3 border-t border-white/[0.06] pt-5">
+              <div className="flex items-start gap-3 border-t border-white/[0.06] pt-5">
                 <span className="clip-hex grid h-9 w-9 shrink-0 place-items-center bg-accent/15">
                   <Target size={15} className="text-accent" />
                 </span>

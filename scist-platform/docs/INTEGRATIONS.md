@@ -42,7 +42,7 @@ BOOTSTRAP_ADMIN_PASSWORD=至少8個字
 
 `ENABLE_DEV_LOGIN=1` 才會打開舊的選角色後門，正式站不要開。
 
-驗收：註冊一個學員 → 打不開 `/admin`；再用管理員把該帳號改成講師 → 重新整理後打得開。
+驗收：註冊一個學員 → 打不開 `/admin`；再用管理員把該帳號改成講師 → 重新整理後打得開。改成助教則會落在「問答」，側邊欄只有問答與靶機環境。各角色能做什麼見 [ARCHITECTURE.md](ARCHITECTURE.md) 的角色能力表。
 
 ## 2.1 Discord 登入（可選）— `src/app/api/auth/discord/*`
 
@@ -57,10 +57,9 @@ DISCORD_CLIENT_SECRET=…
 ADMIN_DISCORD_IDS=你的ID,另一位管理員的ID
 APP_URL=http://localhost:3000
 AUTH_SECRET=至少32個隨機字元
-NEXT_PUBLIC_DISCORD_LOGIN=1
 ```
 
-`NEXT_PUBLIC_DISCORD_LOGIN=1` 讓前台的「用 Discord 登入」按鈕生效。`ADMIN_DISCORD_IDS` 裡的人第一次登入就是管理員，其他人是學員，之後在後台「學員與角色」改。
+填好 `DISCORD_CLIENT_ID` 與 `DISCORD_CLIENT_SECRET`，前台的「用 Discord 登入」按鈕就會自動出現，不需要另外開旗標。`ADMIN_DISCORD_IDS` 裡的人第一次登入就是管理員，其他人是學員，之後在後台「學員與角色」改。
 
 流程：`/api/auth/discord` 設一個 state cookie 並導向 Discord → 使用者同意 → Discord 帶 `code` 回 `/callback` → 伺服器用 code 換 token → 抓 `/users/@me` → 建立或更新 `users` → 簽 JWT 放 cookie → 導向 `/dashboard`。
 

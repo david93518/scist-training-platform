@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { devLogin, setSessionCookie } from "@/server/auth";
 import { route, json, readJson } from "@/server/http";
 import { devLoginSchema } from "@/server/validators";
+import { safeNextPath } from "@/lib/safe-next";
 
 /** Development only: log in as any handle with any role. */
 export const POST = route(async (req: Request) => {
@@ -23,7 +24,6 @@ export const GET = route(async (req: Request) => {
   });
   const session = await devLogin(input);
   await setSessionCookie(session);
-  const next = url.searchParams.get("next") ?? "/";
-  const safe = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safe = safeNextPath(url.searchParams.get("next")) ?? "/";
   return NextResponse.redirect(new URL(safe, url.origin));
 });

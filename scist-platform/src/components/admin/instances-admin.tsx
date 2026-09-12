@@ -7,6 +7,8 @@ import { getAdminApi } from "@/admin/api";
 import type { InstanceStatus } from "@/admin/types";
 import { Button, HexAvatar } from "@/components/ui/primitives";
 import { ConfirmDelete, EmptyState, PageTitle, Table, Td, Th, Tr, ToastHost, useAsync, useToast } from "@/components/admin/ui";
+import { can } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 
@@ -16,6 +18,15 @@ const STATUS: Record<InstanceStatus, { label: string; color: string }> = {
   stopped: { label: "已關閉", color: "#6b7a8e" },
   error: { label: "錯誤", color: "#ff5e5e" },
 };
+
+function MaybeLink({ href, className, children }: { href: string | null; className?: string; children: React.ReactNode }) {
+  if (!href) return <span className={className}>{children}</span>;
+  return (
+    <Link href={href} className={cn(className, "hover:text-accent")}>
+      {children}
+    </Link>
+  );
+}
 
 function countdown(iso: string, now: number) {
   const ms = new Date(iso).getTime() - now;
@@ -31,6 +42,10 @@ export function InstancesAdmin() {
   const list = useAsync(() => api.instances.list());
   const status = useAsync(() => api.status());
   const now = useNow(1000);
+  const role = useProgress((s) => s.role);
+  const mayKillAll = can(role, "instances.killAll");
+  const mayOpenUser = can(role, "users.read");
+  const mayOpenChallenge = can(role, "content.read");
   const [busy, setBusy] = useState<string | null>(null);
 
   const items = list.data ?? [];
@@ -68,7 +83,7 @@ export function InstancesAdmin() {
               <RefreshCw size={13} className={list.loading ? "animate-spin" : ""} />
               重新整理
             </Button>
-            {items.length ? (
+            {items.length && mayKillAll ? (
               <ConfirmDelete
                 label="全部關閉"
                 onConfirm={async () => {
@@ -118,15 +133,16 @@ export function InstancesAdmin() {
               return (
                 <Tr key={i.id}>
                   <Td>
-                    <Link href={"/admin/users?u=" + i.userId} className="flex items-center gap-2.5 font-mono text-[13px] font-bold hover:text-accent">
+                    {/* 助教看得到靶機，但沒有學員與題庫頁，連過去只會被擋回來 */}
+                    <MaybeLink href={mayOpenUser ? "/admin/users?u=" + i.userId : null} className="flex items-center gap-2.5 font-mono text-[13px] font-bold">
                       <HexAvatar seed={i.userHandle} size={28} />
                       {i.userHandle}
-                    </Link>
+                    </MaybeLink>
                   </Td>
                   <Td>
-                    <Link href={"/admin/challenges/" + i.challengeId} className="font-semibold hover:text-accent">
+                    <MaybeLink href={mayOpenChallenge ? "/admin/challenges/" + i.challengeId : null} className="font-semibold">
                       {i.challengeName}
-                    </Link>
+                    </MaybeLink>
                     <div className="font-mono text-[11px] text-fg-3">/{i.challengeSlug}</div>
                   </Td>
                   <Td className="font-mono text-[12.5px] text-fg-2">{i.host ? i.host + (i.port ? ":" + i.port : "") : "—"}</Td>

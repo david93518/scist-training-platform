@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/server/auth";
+import { requireCap } from "@/server/auth";
 import { route, json, readJson } from "@/server/http";
 import { uploadVideoSchema } from "@/server/validators";
 import { createDirectUpload } from "@/server/services/stream";
@@ -7,7 +7,7 @@ import { getDb, schema } from "@/server/db";
 
 /** Returns a one-time Cloudflare Stream upload URL (or a mock ticket). */
 export const POST = route(async (req: Request) => {
-  await requireRole("instructor");
+  await requireCap("content.write");
   const input = await readJson(req, uploadVideoSchema);
   const ticket = await createDirectUpload({ name: input.name, lessonId: input.lessonId });
   const db = await getDb();

@@ -4,7 +4,7 @@ SCIST 南臺灣學生資訊社群數位轉型計畫的互動平台。把「影�
 
 風格參照 Hack The Box 的暗色駭客介面，內容架構依 2026 年度數位轉型企劃書。
 
-目前狀態：前台、後台、資料庫、登入、進度同步、影片播放全部接在一起，本機 `pnpm dev` 就是完整可用的系統。還沒做的只有填外部服務憑證與部署，見 [docs/HANDOFF.md](docs/HANDOFF.md)。
+目前狀態：前台、後台、資料庫、登入、進度同步、影片播放全部接在一起，本機 `pnpm dev` 就是完整可用的系統。所有學習功能都要帳號，沒有訪客模式。還沒做的只有填外部服務憑證與部署，見 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
 ## 文件
 
@@ -24,7 +24,7 @@ pnpm dev
 ```
 
 - 前台：http://localhost:3000
-- 後台：http://localhost:3000/admin（要講師或管理員帳號；沒權限會被帶回首頁登入框）
+- 後台：http://localhost:3000/admin（要助教以上；沒權限會被帶回首頁登入框。各角色看到的功能不同，見下）
 - 登入：右上角「登入」→ 註冊或登入。註冊預設是學員；資料庫還沒有管理員時，**第一個註冊的人會成為管理員**。之後角色只能由管理員在「學員與角色」指派，不能自己選。
 
 不需要任何環境變數就能本機開發。沒設定 `DATABASE_URL` 時資料庫是內嵌的 PGlite，存在 `.data/pglite`，空資料庫會自動灌入示範內容（那些示範帳號沒有密碼，不能登入）。外部服務全部沒設定時走模擬模式，畫面流程照樣能走完。要接真服務時複製 `.env.example` 為 `.env.local` 填入。正式站建議設 `BOOTSTRAP_ADMIN_HANDLE` 與 `BOOTSTRAP_ADMIN_PASSWORD`，不要賭第一個註冊的人。
@@ -47,7 +47,7 @@ pnpm db:studio      # Drizzle Studio 看資料
 | --- | --- |
 | 框架 | Next.js 16（App Router、Turbopack、Route Handlers、proxy） |
 | UI | React 19 + Tailwind CSS v4 |
-| 學員端狀態 | Zustand；訪客存 localStorage，登入後鏡射到 API 並以伺服器為準 |
+| 學員端狀態 | Zustand；只有登入後才有內容，每個動作鏡射到 API、以伺服器為準，`GET /api/me` 回填。訪客的 store 是空的 |
 | 資料庫 | Drizzle ORM；本機 PGlite，正式 Postgres（Neon / Supabase / 自架） |
 | 登入 | 帳號密碼（scrypt）；可選 Discord OAuth；jose 簽 JWT 放 httpOnly cookie |
 | 驗證 | zod（所有 API 輸入在 `src/server/validators.ts`） |
@@ -78,11 +78,11 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 | `/` | 首頁：願景、即時動態、五大路徑、學習閉環、題庫預覽、排行榜、講師、社群、時程 |
 | `/learn` | 學習路徑總覽與個人完成度 |
 | `/learn/[track]` | 單一領域的完整課程大綱、講師、對應實戰題 |
-| `/learn/[track]/[lesson]` | **互動課程播放器**（見下） |
+| `/learn/[track]/[lesson]` | **互動課程播放器**（見下）。需登入 |
 | `/challenges` | 題庫。可依類別、難度、解題狀態篩選與搜尋 |
-| `/challenges/[slug]` | 題目詳情：環境啟動、提示解鎖、Flag 提交、討論、最近解出的人 |
+| `/challenges/[slug]` | 題目詳情：環境啟動、提示解鎖、Flag 提交、討論、最近解出的人。需登入 |
 | `/leaderboard` | 週榜、總榜、18 校聯防積分 |
-| `/dashboard` | 個人 XP、階級、各領域進度、活動紀錄、筆記、變更密碼 |
+| `/dashboard` | 個人 XP、階級、各領域進度、活動紀錄、筆記、變更密碼。需登入 |
 | `/community` | 活動報名、助教賦能計畫、講師群、18 校名單 |
 | `/about` | 組織介紹、平台架構、預算、KPI、贊助方案 |
 | `/admin` | 後台總覽：數字、卡關點、整合狀態、待處理 |
@@ -95,14 +95,18 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 | `/admin/questions` | 問答回覆與採納 |
 | `/admin/instances` | 靶機環境：運行中的容器、到期倒數、關閉 |
 | `/admin/analytics` | 數據：12 週趨勢、學習漏斗、完課率、解題率、18 校參與 |
-| `/admin/audit` | 操作紀錄：誰在什麼時候改了什麼 |
+| `/admin/audit` | 操作紀錄：誰在什麼時候改了什麼、哪些欄位改成什麼 |
 | `/admin/settings` | 站點文案、XP 規則、階級門檻、整合狀態、CTFd 匯入、匯出 |
 
 所有前台頁面每次請求都從資料庫讀，後台改完重新整理就看得到。
 
+標了「需登入」的三個頁面由 `src/proxy.ts` 在伺服器端擋：沒有 session 會被導回 `/?login=1&next=原路徑`，首頁的登入框讀到參數就開啟，登入或註冊完直接帶回原頁。其他前台頁面（首頁、課程列表、路徑大綱、題庫列表、排行榜、社群、關於）公開，但上面需要帳號的按鈕（例如活動報名）按下去也會開同一個登入框。
+
+後台不是每個角色都看得到全部。**助教**只有問答與靶機環境，**講師**多了內容、學員名單（唯讀）與數據，**管理員**才有角色管理、設定與操作紀錄。這張表定義在 `src/lib/permissions.ts`，API 守門、側邊欄與按鈕讀的都是它，完整矩陣見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
 ## 互動課程播放器
 
-`/learn/[track]/[lesson]` 是整個平台的核心，把企劃書裡「翻轉教室」的概念做成可操作的東西：
+`/learn/[track]/[lesson]` 是整個平台的核心，把企劃書裡「翻轉教室」的概念做成可操作的東西。播放器需要登入；未登入者只能在 `/learn/[track]` 看大綱。
 
 1. **播放** — 課程有 YouTube 或 Cloudflare Stream 影片時用真的播放器；沒有影片時用程式碼跑馬燈當替身，兩者共用同一套控制列與進度條。
 2. **知識點檢查站** — 播到設定的百分比會自動暫停，右側跳出選擇題。**答對才會繼續播放**，答錯可以重試。
@@ -114,13 +118,14 @@ chrome --headless=new --window-size=1440,3000 --virtual-time-budget=10000 --scre
 
 ## 登入與進度
 
-- 訪客不用登入就能看課、答檢查站、在瀏覽器比對 flag，進度存在這台瀏覽器。
-- 登入（帳號密碼，可選 Discord）後，伺服器是唯一的真相：每個動作打 API，`GET /api/me` 回填 store。訪客時期的檢查站、看課進度、筆記會在第一次登入時合併到帳號。
-- 只有登入後的解題會進排行榜、First Blood 與 Discord 通知。
+- 沒有帳號什麼都不能做。訪客只能瀏覽：首頁、`/learn` 與各路徑大綱、`/challenges` 題庫列表、排行榜、社群、關於。
+- 課程播放器、題目頁、儀表板由 `src/proxy.ts` 在伺服器端擋：沒有 session 就導回 `/?login=1&next=原路徑`，登入框登入後帶回原頁。公開頁上的報名、發問等按鈕未登入時也會開登入框。
+- 登入（帳號密碼，可選 Discord）後，伺服器是唯一的真相：每個動作打 API，`GET /api/me` 回填 store。進度只存在帳號上，換裝置登入就跟著走；瀏覽器沒有任何本機進度。
+- 解題需登入；解題會進排行榜、First Blood 與 Discord 通知。
 
 ## Flag 驗證
 
-flag 只以 SHA-256 存放，前端與資料庫都沒有明文。登入者的提交由 `POST /api/challenges/{slug}/attempt` 在伺服器比對（限流、記錄嘗試、First Blood 通知）；訪客在瀏覽器用同一組雜湊比對，不會記錄。
+flag 只以 SHA-256 存在資料庫，雜湊不會送到瀏覽器，前端拿不到明文也拿不到雜湊。所有提交都由 `POST /api/challenges/{slug}/attempt` 在伺服器比對（限流、記錄嘗試、First Blood 通知）。提示內文同樣不在公開的題目資料裡，解鎖後由 `GET/POST /api/challenges/{slug}/hints` 給，只給已解鎖的。
 
 `welcome` 這題刻意把 flag 直接寫在題目敘述裡，讓第一次使用的人能完整走完一次提交流程。
 
@@ -132,7 +137,7 @@ flag 只以 SHA-256 存放，前端與資料庫都沒有明文。登入者的提
 | --- | --- | --- |
 | 開關 | 不設定 | `.env.local` 設 `NEXT_PUBLIC_ADMIN_API=local` |
 | 資料在哪 | 資料庫（透過 `/api/admin/*`） | 這台瀏覽器的 localStorage |
-| 需要登入 | 講師以上（`src/proxy.ts` 在伺服器端擋） | 不用 |
+| 需要登入 | 助教以上（`src/proxy.ts` 在伺服器端擋） | 不用（只限開發；正式站不得設 `NEXT_PUBLIC_ADMIN_API=local`。這個開關只放行後台，學員頁的登入牆不受影響） |
 | 用途 | 真正上架內容 | 看畫面、討論 UX |
 
 ## 內容怎麼改

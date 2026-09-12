@@ -1,34 +1,64 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X, Zap, Lock, ListChecks } from "lucide-react";
+import { Check, X, Zap, Lock, ListChecks, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatTimecode } from "@/lib/checkpoint";
 import type { Checkpoint } from "@/data/tracks";
 
+/** What the server says about one submitted answer. */
+export interface CheckpointVerdict {
+  correct: boolean;
+  explain?: string;
+}
+
+/**
+ * One knowledge check. The correct option is not in the browser: every pick is
+ * sent to the server, which awards the XP and hands back the explanation only
+ * when the answer was right.
+ */
 export function CheckpointQuiz({
   checkpoint,
   index,
   total,
   answered,
+  reveal,
   accent,
-  onCorrect,
+  onAnswer,
 }: {
   checkpoint: Checkpoint;
   index: number;
   total: number;
   answered: boolean;
+  /** already passed on an earlier visit: the answer key is safe to show again */
+  reveal?: { answer: number; explain: string };
   accent: string;
-  onCorrect: () => void;
+  onAnswer: (choice: number) => Promise<CheckpointVerdict>;
 }) {
-  const [picked, setPicked] = useState<number | null>(null);
+  const [correctIndex, setCorrectIndex] = useState<number | null>(reveal ? reveal.answer : null);
+  const [explain, setExplain] = useState<string>(reveal?.explain ?? "");
   const [wrong, setWrong] = useState<number[]>([]);
-  const settled = answered || picked === checkpoint.answer;
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const settled = answered || correctIndex !== null;
 
-  const choose = (i: number) => {
-    if (settled) return;
-    setPicked(i);
-    if (i === checkpoint.answer) onCorrect();
-    else setWrong((w) => (w.includes(i) ? w : [...w, i]));
+  const choose = async (i: number) => {
+    if (settled || busy !== null || wrong.includes(i)) return;
+    setBusy(i);
+    setError(null);
+    try {
+      const verdict = await onAnswer(i);
+      if (verdict.correct) {
+        setCorrectIndex(i);
+        setExplain(verdict.explain ?? "");
+      } else {
+        setWrong((w) => (w.includes(i) ? w : [...w, i]));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "送出失敗，再試一次。");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -51,14 +81,14 @@ export function CheckpointQuiz({
 
       <div className="mt-3.5 flex flex-col gap-2">
         {checkpoint.options.map((opt, i) => {
-          const isAnswer = i === checkpoint.answer;
           const isWrong = wrong.includes(i);
-          const show = settled && isAnswer;
+          const show = correctIndex === i;
+          const loading = busy === i;
           return (
             <button
               key={i}
-              onClick={() => choose(i)}
-              disabled={settled}
+              onClick={() => void choose(i)}
+              disabled={settled || busy !== null || isWrong}
               className={cn(
                 "flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-left text-[13.5px] transition-all",
                 show
@@ -79,7 +109,9 @@ export function CheckpointQuiz({
                       : "border-line-2 text-fg-3",
                 )}
               >
-                {show ? (
+                {loading ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : show ? (
                   <Check size={11} strokeWidth={3} />
                 ) : isWrong ? (
                   <X size={11} strokeWidth={3} />
@@ -93,26 +125,32 @@ export function CheckpointQuiz({
         })}
       </div>
 
+      {error ? <p className="mt-3 text-[12.5px] text-red">{error}</p> : null}
+
       {settled ? (
-        <div className="mt-3 rounded-lg border border-accent/25 bg-accent/[0.07] p-3">
-          <div className="mono-label mb-1" style={{ color: accent }}>
-            解析
+        explain ? (
+          <div className="mt-3 rounded-lg border border-accent/25 bg-accent/[0.07] p-3">
+            <div className="mono-label mb-1" style={{ color: accent }}>
+              解析
+            </div>
+            <p className="text-[13px] leading-relaxed text-fg-2">{explain}</p>
           </div>
-          <p className="text-[13px] leading-relaxed text-fg-2">{checkpoint.explain}</p>
-        </div>
+        ) : (
+          <p className="mt-3 text-[12.5px] text-accent">答對了。</p>
+        )
       ) : wrong.length > 0 ? (
-        <p className="mt-3 text-[12.5px] text-fg-3">再想一下，可以回去看那一段影片。</p>
+        <p className="mt-3 text-[12.5px] text-fg-3">再想一下。把左邊的進度條往回拉，可以重看那一段影片。</p>
       ) : null}
     </div>
   );
 }
 
-export function LockedCheckpoint({ at }: { at: number }) {
+export function LockedCheckpoint({ atSec }: { atSec: number }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line py-8 text-center">
       <Lock size={18} className="text-fg-3" />
       <p className="text-[13px] text-fg-3">
-        影片播放到 {Math.round(at * 100)}% 後解鎖
+        影片播放到 {formatTimecode(atSec)} 後解鎖
       </p>
     </div>
   );

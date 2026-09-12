@@ -6,14 +6,21 @@ import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { ApiError } from "../auth";
 import * as instancer from "../services/instancer";
-import type { AdminAnalytics, AdminInstance, AuditAction, AuditEntry } from "@/admin/types";
+import type { AdminAnalytics, AdminInstance, AuditAction, AuditChange, AuditEntry } from "@/admin/types";
 import { CATEGORY_META, type Category } from "@/data/challenges";
 import { schoolById } from "@/data/schools";
 
 /* ------------------------------ audit ------------------------------ */
-export async function audit(actorId: string | null, action: AuditAction, entity: string, entityId: string | null, label: string) {
+export async function audit(
+  actorId: string | null,
+  action: AuditAction,
+  entity: string,
+  entityId: string | null,
+  label: string,
+  changes: AuditChange[] = [],
+) {
   const db = await getDb();
-  await db.insert(schema.auditLog).values({ actorId, action, entity, entityId, detail: { label } });
+  await db.insert(schema.auditLog).values({ actorId, action, entity, entityId, detail: { label, changes } });
 }
 
 export async function listAudit(limit = 200): Promise<AuditEntry[]> {
@@ -32,15 +39,20 @@ export async function listAudit(limit = 200): Promise<AuditEntry[]> {
     .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
     .orderBy(desc(schema.auditLog.createdAt))
     .limit(limit);
-  return rows.map((r) => ({
-    id: r.id,
-    actorHandle: r.handle ?? "system",
-    action: r.action as AuditAction,
-    entity: r.entity,
-    entityId: r.entityId,
-    label: String((r.detail as { label?: unknown } | null)?.label ?? ""),
-    at: r.at.toISOString(),
-  }));
+  return rows.map((r) => {
+    const detail = r.detail as { label?: unknown; changes?: unknown } | null;
+    return {
+      id: r.id,
+      actorHandle: r.handle ?? "system",
+      action: r.action as AuditAction,
+      entity: r.entity,
+      entityId: r.entityId,
+      label: String(detail?.label ?? ""),
+      // 舊資料只有 label，沒有 changes
+      changes: Array.isArray(detail?.changes) ? (detail.changes as AuditChange[]) : [],
+      at: r.at.toISOString(),
+    };
+  });
 }
 
 /* ------------------------------ instances ------------------------------ */
@@ -187,14 +199,16 @@ export async function getAnalytics(): Promise<AdminAnalytics> {
     return { id: t.id, name: t.name, color: t.color, lessons: ids.size, learners, completions, rate: learners && ids.size ? completions / (learners * ids.size) : 0 };
   });
 
-  // same blend as the overview's 卡關點: real traffic plus the seed numbers by difficulty
+  // Real traffic only. This page is what a 講師 screenshots for sponsors, so it
+  // must not blend in `baseSolves` — that is a hand-entered "looks alive" number
+  // for the public challenge cards, and mixing it in here produced a page that
+  // claimed 2,783 solves next to a weekly total of 1.
   const categories = (Object.keys(CATEGORY_META) as Category[]).map((cat) => {
     let attempts = 0;
     let solvesN = 0;
     for (const c of challenges.filter((x) => x.category === cat)) {
-      const factor = c.difficulty === "insane" ? 5 : c.difficulty === "hard" ? 3.6 : c.difficulty === "medium" ? 2.4 : 1.5;
-      attempts += Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0) + Math.round(c.baseSolves * factor);
-      solvesN += solveRows.filter((s) => s.challengeId === c.id).length + c.baseSolves;
+      attempts += Number(attemptRows.find((a) => a.challengeId === c.id)?.n ?? 0);
+      solvesN += solveRows.filter((s) => s.challengeId === c.id).length;
     }
     return { category: cat, label: CATEGORY_META[cat].label, color: CATEGORY_META[cat].color, attempts, solves: solvesN, rate: attempts ? solvesN / attempts : 0 };
   });

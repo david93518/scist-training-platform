@@ -1,25 +1,29 @@
 /**
  * Learning tracks — the "課程" half of the platform.
  * Five security domains + a programming primer, each: 入門 → 實戰 → 競賽.
- * Lesson content is authored as structured blocks (no markdown parser needed)
- * so the player can render code, callouts and checkpoints natively.
+ * Lesson content is stored as structured blocks. The admin editor writes
+ * Markdown and we parse it into these blocks for the player.
  */
 import type { Difficulty } from "@/lib/xp";
+
+export type CalloutTone = "tip" | "warn" | "info";
+export type CalloutBlock = { type: "callout"; tone: CalloutTone; text: string };
 
 export type ContentBlock =
   | { type: "p"; text: string }
   | { type: "h"; text: string }
   | { type: "code"; lang: string; lines: string[] }
   | { type: "list"; items: string[] }
-  | { type: "callout"; tone: "tip" | "warn" | "info"; text: string };
+  | CalloutBlock;
 
 export interface Checkpoint {
-  /** 0..1 point in the video where this unlocks */
+  /** 出現在影片第幾秒。僅 (0, 1) 的小數當成舊比例，讀的時候走 checkpointAtSec() */
   at: number;
   question: string;
   options: string[];
-  answer: number;
-  explain: string;
+  /** 正解與解析只存在伺服器。公開的課程資料會拿掉，答題由 POST /api/progress 判定 */
+  answer?: number;
+  explain?: string;
   xp: number;
 }
 

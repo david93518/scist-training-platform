@@ -17,7 +17,7 @@ export default async function DashboardPage() {
       <PageHero
         kicker="YOUR PROFILE"
         title="我的進度"
-        desc="看課、答對檢查站、解題都會累積在這裡。登入後綁定帳號、跨裝置同步；沒登入的話先存在這台瀏覽器，登入時會一併帶過去。"
+        desc="看課、答對檢查站、解題都會累積在這裡，跨裝置同步。"
         seed={17}
       />
       <div className="mx-auto max-w-7xl px-5 py-12">

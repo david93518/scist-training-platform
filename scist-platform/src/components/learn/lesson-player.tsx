@@ -28,14 +28,29 @@ import { Button, LinkButton, ProgressBar, DifficultyBadge } from "@/components/u
 import type { Challenge } from "@/data/challenges";
 import { lessonNeighbours, type Lesson, type Track } from "@/data/tracks";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
-import { useCanRecordProgress } from "@/components/settings-provider";
+import { isCallout } from "@/lib/callout";
+import { checkpointAtSec, checkpointProgress } from "@/lib/checkpoint";
+import { LoginWall } from "@/components/login-wall";
 import { cn, formatMinutes } from "@/lib/utils";
 
 type TabId = "quiz" | "lab" | "notes" | "qa";
 
 const TICK_MS = 250;
 
-export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: Track; lesson: Lesson; lab?: Challenge; video?: LessonVideo }) {
+export function LessonPlayer({
+  track,
+  lesson,
+  lab,
+  video = NO_VIDEO,
+  revealed = {},
+}: {
+  track: Track;
+  lesson: Lesson;
+  lab?: Challenge;
+  video?: LessonVideo;
+  /** checkpoints this learner already passed: index → answer + explanation */
+  revealed?: Record<number, { answer: number; explain: string }>;
+}) {
   const key = lessonKey(track.slug, lesson.slug);
   const hydrated = useHydrated();
   // a real recording drives the clock; the stand-in ticks on its own
@@ -46,18 +61,20 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
   const note = useProgress((s) => s.notes[key] ?? "");
   const isDone = useProgress((s) => s.completedLessons.includes(key));
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const setWatched = useProgress((s) => s.setWatched);
   const answerCheckpoint = useProgress((s) => s.answerCheckpoint);
   const setNote = useProgress((s) => s.setNote);
   const completeLesson = useProgress((s) => s.completeLesson);
-  const canRecord = useCanRecordProgress();
 
   const answeredSet = useMemo(() => new Set(answered ?? []), [answered]);
 
   const [position, setPosition] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [captions, setCaptions] = useState(!real);
+  const [captions, setCaptions] = useState(
+    !real || lesson.content.some((b) => isCallout(b) && b.text.trim()),
+  );
   const [tab, setTab] = useState<TabId>("quiz");
   const [gateIndex, setGateIndex] = useState<number | null>(null);
   const [justCompleted, setJustCompleted] = useState(false);
@@ -71,11 +88,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     (p: number) => {
       for (let i = 0; i < lesson.checkpoints.length; i++) {
         const c = lesson.checkpoints[i];
-        if (!answeredSet.has(i) && p >= c.at) return i;
+        if (!answeredSet.has(i) && p >= checkpointProgress(c.at, lesson.durationSec)) return i;
       }
       return null;
     },
-    [lesson.checkpoints, answeredSet],
+    [lesson.checkpoints, lesson.durationSec, answeredSet],
   );
 
   // stand-in playback loop
@@ -90,7 +107,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
           setPlaying(false);
           setGateIndex(gate);
           setTab("quiz");
-          return lesson.checkpoints[gate].at;
+          return checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec);
         }
         if (next >= 1) setPlaying(false);
         return next;
@@ -107,13 +124,13 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
         setPlaying(false);
         setGateIndex(gate);
         setTab("quiz");
-        setPosition(lesson.checkpoints[gate].at);
+        setPosition(checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec));
         return;
       }
       setPosition(p);
       if (p >= 0.999) setPlaying(false);
     },
-    [nextGate, lesson.checkpoints],
+    [nextGate, lesson.checkpoints, lesson.durationSec],
   );
 
   // persist watch position
@@ -123,9 +140,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     return () => clearTimeout(id);
   }, [position, key, hydrated, setWatched]);
 
-  const allChecked =
-    lesson.checkpoints.length > 0 &&
-    lesson.checkpoints.every((_, i) => answeredSet.has(i));
+  // every() is already true for a lesson with no checkpoints, and that is the
+  // right answer: a 觀念課 has nothing to answer, so it must still be completable.
+  // Requiring length > 0 used to lock those lessons forever, with the panel
+  // saying "直接看完就好" next to a disabled button.
+  const allChecked = lesson.checkpoints.every((_, i) => answeredSet.has(i));
   // reaching the last checkpoint already requires watching most of the lesson
   const canComplete = allChecked;
 
@@ -152,60 +171,66 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
     { id: "qa", label: "問答", Icon: MessageSquare },
   ];
 
-  return (
-    <div className="flex min-w-0 flex-col gap-5">
-      {/* header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span
-              className="font-mono text-[11px] tracking-[0.16em]"
-              style={{ color: track.color }}
-            >
-              {track.en.toUpperCase()} · 第 {index + 1} / {total} 課
+  const header = (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span
+            className="font-mono text-[11px] tracking-[0.16em]"
+            style={{ color: track.color }}
+          >
+            {track.en.toUpperCase()} · 第 {index + 1} / {total} 課
+          </span>
+          {hydrated && isDone ? (
+            <span className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
+              <Check size={10} strokeWidth={3} />
+              已完成
             </span>
-            {hydrated && isDone ? (
-              <span className="flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
-                <Check size={10} strokeWidth={3} />
-                已完成
-              </span>
-            ) : null}
-          </div>
-          <h1 className="mt-1.5 text-balance text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">
-            {lesson.title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-2">
-            {lesson.summary}
-          </p>
+          ) : null}
         </div>
-
-        <div className="flex shrink-0 flex-wrap items-center gap-4 font-mono text-[11.5px] text-fg-3">
-          <span className="flex items-center gap-1.5">
-            <Clock size={13} />
-            {formatMinutes(lesson.durationSec)}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <ListChecks size={13} />
-            {lesson.checkpoints.length} 檢查站
-          </span>
-          <span className="flex items-center gap-1.5 text-accent">
-            <Zap size={13} />+{lesson.xp} XP
-          </span>
-          <DifficultyBadge level={track.difficulty} />
-        </div>
+        <h1 className="mt-1.5 text-balance text-[26px] font-extrabold leading-tight tracking-tight sm:text-[30px]">
+          {lesson.title}
+        </h1>
+        <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-fg-2">
+          {lesson.summary}
+        </p>
       </div>
 
-      {hydrated && !canRecord ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
-          <Lock size={15} className="shrink-0 text-amber" />
-          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-fg-2">
-            目前沒有開放未登入者累積進度。你還是可以把這一課看完，但觀看位置、檢查站與筆記都不會留下來。
-          </p>
-          <LinkButton href="?login" variant="outline" size="sm">
-            登入才能記錄
-          </LinkButton>
-        </div>
-      ) : null}
+      <div className="flex shrink-0 flex-wrap items-center gap-4 font-mono text-[11.5px] text-fg-3">
+        <span className="flex items-center gap-1.5">
+          <Clock size={13} />
+          {formatMinutes(lesson.durationSec)}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <ListChecks size={13} />
+          {lesson.checkpoints.length} 檢查站
+        </span>
+        <span className="flex items-center gap-1.5 text-accent">
+          <Zap size={13} />+{lesson.xp} XP
+        </span>
+        <DifficultyBadge level={track.difficulty} />
+      </div>
+    </div>
+  );
+
+  // The route is gated in src/proxy.ts; this only shows up when the session
+  // expired or the account was suspended while the page was open.
+  if (hydrated && sessionChecked && !authenticated) {
+    return (
+      <div className="flex min-w-0 flex-col gap-5">
+        {header}
+        <LoginWall
+          title="登入後才能上課"
+          desc="看課進度、檢查站與筆記都記在你的帳號上。登入或註冊後會直接回到這一課。"
+          className="mx-auto w-full max-w-xl"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      {header}
 
       {/* stage + panel */}
       <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
@@ -238,7 +263,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             onTogglePlay={() => {
               if (gateIndex !== null) return;
               const gate = nextGate(position);
-              if (gate !== null && position >= lesson.checkpoints[gate].at) {
+              if (gate !== null) {
                 setGateIndex(gate);
                 setTab("quiz");
                 return;
@@ -248,12 +273,16 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             onSeek={(p) => {
               const gate = nextGate(p);
               if (gate !== null) {
-                setPosition(lesson.checkpoints[gate].at);
+                setPosition(checkpointProgress(lesson.checkpoints[gate].at, lesson.durationSec));
                 setGateIndex(gate);
                 setTab("quiz");
                 setPlaying(false);
               } else {
+                // Seeking back before the checkpoint lifts the gate, so "回去看
+                // 那一段影片" is actually possible. Playing forward hits the same
+                // checkpoint again and re-gates it.
                 setPosition(p);
+                setGateIndex(null);
               }
             }}
             onRestart={() => {
@@ -282,7 +311,7 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
             <div className="flex items-center gap-3 rounded-xl border border-amber/40 bg-amber/[0.07] px-4 py-3">
               <Lock size={15} className="shrink-0 text-amber" />
               <p className="text-[13px] text-fg-2">
-                影片停在知識點檢查站。答對右邊的題目就會繼續播放。
+                影片停在知識點檢查站。答對右邊的題目就會繼續播放；想再看一次，把進度條往回拉就好。
               </p>
             </div>
           ) : null}
@@ -330,8 +359,8 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                   ) : (
                     lesson.checkpoints.map((c, i) => {
                       const isAnswered = hydrated && answeredSet.has(i);
-                      const unlocked = position >= c.at || isAnswered;
-                      if (!unlocked) return <LockedCheckpoint key={i} at={c.at} />;
+                      const unlocked = position >= checkpointProgress(c.at, lesson.durationSec) || isAnswered;
+                      if (!unlocked) return <LockedCheckpoint key={i} atSec={checkpointAtSec(c.at, lesson.durationSec)} />;
                       return (
                         <CheckpointQuiz
                           key={i}
@@ -339,19 +368,21 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                           index={i}
                           total={lesson.checkpoints.length}
                           answered={isAnswered}
+                          reveal={revealed[i]}
                           accent={track.color}
-                          onCorrect={() => {
-                            answerCheckpoint(key, i, c.xp);
-                            if (gateIndex === i) {
+                          onAnswer={async (choice) => {
+                            const verdict = await answerCheckpoint(key, i, choice);
+                            if (verdict.correct && gateIndex === i) {
                               setGateIndex(null);
                               setTimeout(() => setPlaying(true), 550);
                             }
+                            return verdict;
                           }}
                         />
                       );
                     })
                   )}
-                  {allChecked ? <AllCheckpointsDone accent={track.color} /> : null}
+                  {allChecked && lesson.checkpoints.length > 0 ? <AllCheckpointsDone accent={track.color} /> : null}
                 </div>
               ) : null}
 
@@ -403,12 +434,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
                   <div className="flex items-center justify-between">
                     <span className="mono-label">我的筆記</span>
                     <span className="font-mono text-[10.5px] text-fg-3">
-                      {!canRecord ? "登入才能保存" : authenticated ? "自動儲存到你的帳號" : "自動儲存在這台裝置"}
+                      自動儲存到你的帳號
                     </span>
                   </div>
                   <textarea
                     value={hydrated ? note : ""}
-                    readOnly={!canRecord}
                     onChange={(e) => setNote(key, e.target.value)}
                     placeholder={
                       "在這裡記下你的理解、卡住的地方、想之後再查的東西。\n\n例如：\n- 為什麼兩個減號能註解掉後面？\n- 參數化查詢要在哪一層做？"
@@ -446,16 +476,11 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
               ) : (
                 <Button
                   className="w-full"
-                  variant={canComplete && canRecord ? "primary" : "outline"}
-                  disabled={!canComplete || !canRecord}
+                  variant={canComplete ? "primary" : "outline"}
+                  disabled={!canComplete}
                   onClick={onComplete}
                 >
-                  {!canRecord ? (
-                    <>
-                      <Lock size={14} />
-                      登入才能記錄完成
-                    </>
-                  ) : canComplete ? (
+                  {canComplete ? (
                     <>
                       <Check size={15} />
                       標記完成 +{lesson.xp} XP
@@ -499,10 +524,12 @@ export function LessonPlayer({ track, lesson, lab, video = NO_VIDEO }: { track: 
           </Link>
         )}
 
-        <p className="hidden text-[12.5px] text-fg-3 sm:block">
-          {allChecked
-            ? "檢查站都過了，可以往下一課"
-            : "完成所有 " + lesson.checkpoints.length + " 個知識點檢查站以解鎖下一課"}
+        <p className="text-[12.5px] text-fg-3">
+          {lesson.checkpoints.length === 0
+            ? "這一課沒有檢查站，看完就可以往下一課"
+            : allChecked
+              ? "檢查站都過了，可以往下一課"
+              : "完成所有 " + lesson.checkpoints.length + " 個知識點檢查站以解鎖下一課"}
         </p>
 
         {next ? (

@@ -16,10 +16,13 @@ export function CurriculumSidebar({
 }) {
   const completed = useProgress((s) => s.completedLessons);
   const watched = useProgress((s) => s.watched);
+  const authenticated = useProgress((s) => s.authenticated);
   const hydrated = useHydrated();
   const lessons = allLessons(track);
 
-  const doneCount = hydrated
+  // progress belongs to the account: without one the outline is plain
+  const showProgress = hydrated && authenticated;
+  const doneCount = showProgress
     ? lessons.filter((l) => completed.includes(lessonKey(track.slug, l.slug))).length
     : 0;
 
@@ -52,9 +55,9 @@ export function CurriculumSidebar({
               </div>
               {mod.lessons.map((l, i) => {
                 const key = lessonKey(track.slug, l.slug);
-                const isDone = hydrated && completed.includes(key);
+                const isDone = showProgress && completed.includes(key);
                 const isCurrent = l.slug === currentSlug;
-                const pos = hydrated ? (watched[key] ?? 0) : 0;
+                const pos = showProgress ? (watched[key] ?? 0) : 0;
                 return (
                   <Link
                     key={l.id}
@@ -120,15 +123,17 @@ export function CurriculumSidebar({
           ))}
         </div>
 
-        <div className="border-t border-line bg-bg-1/60 px-4 py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="mono-label">你的進度</span>
-            <span className="font-mono text-[11.5px] text-fg-2">
-              {doneCount} / {lessons.length}
-            </span>
+        {showProgress ? (
+          <div className="border-t border-line bg-bg-1/60 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="mono-label">你的進度</span>
+              <span className="font-mono text-[11.5px] text-fg-2">
+                {doneCount} / {lessons.length}
+              </span>
+            </div>
+            <ProgressBar value={lessons.length ? doneCount / lessons.length : 0} color={track.color} />
           </div>
-          <ProgressBar value={doneCount / lessons.length} color={track.color} />
-        </div>
+        ) : null}
       </div>
 
       <div className="card flex items-start gap-3 p-4">

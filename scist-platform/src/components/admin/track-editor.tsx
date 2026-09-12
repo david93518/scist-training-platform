@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { getAdminApi } from "@/admin/api";
 import type { AdminTrack } from "@/admin/types";
 import { useInstructors } from "@/components/admin/use-instructors";
-import { Icon } from "@/components/ui/icon";
+import { Icon, TRACK_ICONS } from "@/components/ui/icon";
 import {
   ConfirmDelete,
   Field,
@@ -26,9 +26,10 @@ import {
   useToast,
   useUnsavedGuard,
 } from "@/components/admin/ui";
+import { can } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { cn } from "@/lib/utils";
 
-const ICONS = ["Code2", "Globe", "KeyRound", "Binary", "Bug", "Terminal", "Puzzle", "Trophy", "Radio", "Hammer"];
 const COLORS = ["#a4f13b", "#4da3ff", "#3ee8d5", "#b983ff", "#ff6fb5", "#ffb84d", "#ff5e5e"];
 const LEVELS = ["入門友善", "需數學基礎", "中階", "進階", "全員必修"];
 
@@ -52,6 +53,24 @@ function blank(): AdminTrack {
   };
 }
 
+/**
+ * Deleting content cascades into every learner's records, so the server refuses
+ * with 409 and a sentence naming what would be lost. Repeat it to the person and
+ * only force the delete if they still say yes.
+ */
+async function deleteWithLearnerWarning(remove: (force?: boolean) => Promise<void>) {
+  try {
+    await remove();
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (!msg.includes("學員紀錄")) throw e;
+    if (!window.confirm(msg + "\n\n仍要永久刪除嗎？")) return false;
+    await remove(true);
+    return true;
+  }
+}
+
 export function TrackEditor({ id }: { id?: string }) {
   const api = getAdminApi();
   const router = useRouter();
@@ -63,6 +82,8 @@ export function TrackEditor({ id }: { id?: string }) {
   const [missing, setMissing] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const instructors = useInstructors();
+  // 砍一條路徑會連動底下所有課程，只有管理員能做
+  const mayDelete = can(useProgress((s) => s.role), "track.delete");
 
   useEffect(() => {
     if (!id) return;
@@ -109,10 +130,15 @@ export function TrackEditor({ id }: { id?: string }) {
         title={id ? draft.name || "編輯路徑" : "新增學習路徑"}
         actions={
           <>
-            {id ? (
+            {id && mayDelete ? (
               <ConfirmDelete
                 onConfirm={async () => {
-                  await api.tracks.remove(draft.id);
+                  try {
+                    if (!(await deleteWithLearnerWarning((force) => api.tracks.remove(draft.id, force)))) return;
+                  } catch (e) {
+                    toast(e instanceof Error ? e.message : "刪除失敗", "err");
+                    return;
+                  }
                   toast("已刪除");
                   router.push("/admin/tracks");
                 }}
@@ -179,11 +205,11 @@ export function TrackEditor({ id }: { id?: string }) {
           </SectionCard>
 
           <SectionCard title="外觀">
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="flex flex-col gap-5">
               <div>
                 <div className="mono-label mb-2">圖示</div>
                 <div className="flex flex-wrap gap-2">
-                  {ICONS.map((ic) => (
+                  {TRACK_ICONS.map((ic) => (
                     <button
                       key={ic}
                       type="button"

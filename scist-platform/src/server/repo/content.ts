@@ -10,8 +10,9 @@
  */
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
+import { ApiError } from "../auth";
 import { sha256Hex } from "@/lib/hash";
-import { deleteObject, publicUrl } from "../services/r2";
+import { publicUrl } from "../services/r2-url";
 import { cached, invalidate, TTL } from "../cache";
 import type { AdminChallenge, AdminEvent, AdminLesson, AdminTrack } from "@/admin/types";
 import type { Track as PublicTrack, Lesson as PublicLesson } from "@/data/tracks";
@@ -46,6 +47,10 @@ export async function listTracksAdmin(): Promise<AdminTrack[]> {
   }));
 }
 
+export async function findTrackAdmin(id: string): Promise<AdminTrack | null> {
+  return (await listTracksAdmin()).find((t) => t.id === id) ?? null;
+}
+
 export async function saveTrack(input: AdminTrack): Promise<AdminTrack> {
   const db = await getDb();
   const row = {
@@ -64,30 +69,66 @@ export async function saveTrack(input: AdminTrack): Promise<AdminTrack> {
     sortOrder: input.sortOrder,
     status: input.status,
   };
+  // A dropped module that still holds lessons used to be skipped silently: the
+  // save returned 200 and the chapter was simply still there afterwards. Check
+  // before writing anything and say which chapter is in the way.
+  const keep = input.modules.map((m) => m.id);
+  const existing = await db.select({ id: schema.modules.id, title: schema.modules.title }).from(schema.modules).where(eq(schema.modules.trackId, input.id));
+  const dropped = existing.filter((m) => !keep.includes(m.id));
+  const blocked: string[] = [];
+  for (const m of dropped) {
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.lessons).where(eq(schema.lessons.moduleId, m.id));
+    if (Number(n) > 0) blocked.push(m.title + "（還有 " + Number(n) + " 堂課）");
+  }
+  if (blocked.length > 0) {
+    throw new ApiError(409, "這些章節底下還有課程，不能直接移除：" + blocked.join("、") + "。請先把課程搬到別的章節或刪掉。");
+  }
+
   await db.insert(schema.tracks).values(row).onConflictDoUpdate({ target: schema.tracks.id, set: row });
 
   for (const [i, m] of input.modules.entries()) {
     const mrow = { id: m.id, trackId: input.id, title: m.title, sortOrder: i };
     await db.insert(schema.modules).values(mrow).onConflictDoUpdate({ target: schema.modules.id, set: mrow });
   }
-  // remove modules that were dropped, but only if they hold no lessons
-  const keep = input.modules.map((m) => m.id);
-  const existing = await db.select({ id: schema.modules.id }).from(schema.modules).where(eq(schema.modules.trackId, input.id));
-  for (const m of existing) {
-    if (keep.includes(m.id)) continue;
-    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.lessons).where(eq(schema.lessons.moduleId, m.id));
-    if (Number(n) === 0) await db.delete(schema.modules).where(eq(schema.modules.id, m.id));
+  for (const m of dropped) {
+    await db.delete(schema.modules).where(eq(schema.modules.id, m.id));
   }
   const [saved] = (await listTracksAdmin()).filter((t) => t.id === input.id);
   contentChanged();
   return saved;
 }
 
-export async function deleteTrack(id: string) {
+export async function deleteTrack(id: string, force = false) {
   const db = await getDb();
+  const track = await db.query.tracks.findFirst({ where: eq(schema.tracks.id, id) });
+  if (!track) return;
+  const lessonIds = (await db.select({ id: schema.lessons.id }).from(schema.lessons).where(eq(schema.lessons.trackId, id))).map((l) => l.id);
+  const [{ progress }] = lessonIds.length
+    ? await db
+        .select({ progress: sql<number>`count(*)::int` })
+        .from(schema.lessonProgress)
+        .where(inArray(schema.lessonProgress.lessonId, lessonIds))
+    : [{ progress: 0 }];
+  await refuseIfLearnersDependOnIt(force, track.name, [["學習進度", Number(progress)]]);
   await db.delete(schema.tracks).where(eq(schema.tracks.id, id));
   contentChanged();
 }
+
+
+/* --------------------------- delete safety net --------------------------- */
+/**
+ * 學員紀錄是跟著內容一起 cascade 掉的：刪一題就等於把所有人的解題紀錄、
+ * 嘗試次數一起刪掉，刪一課就刪掉所有人的看課進度、檢查站與筆記。那是拿不
+ * 回來的，所以除非呼叫端明講 force，先擋下來並說清楚會失去什麼。
+ */
+async function refuseIfLearnersDependOnIt(force: boolean, label: string, counts: [string, number][]) {
+  if (force) return;
+  const real = counts.filter(([, n]) => n > 0);
+  if (real.length === 0) return;
+  const detail = real.map(([what, n]) => n + " 筆" + what).join("、");
+  throw new ApiError(409, "「" + label + "」底下還有學員紀錄（" + detail + "）。刪掉會一起消失而且救不回來。要保留紀錄請改成「下架」；真的要刪請再確認一次。");
+}
+
 
 /* ================================ lessons =============================== */
 function toAdminLesson(l: typeof schema.lessons.$inferSelect): AdminLesson {
@@ -116,6 +157,12 @@ export async function listLessonsAdmin(): Promise<AdminLesson[]> {
   const db = await getDb();
   const rows = await db.select().from(schema.lessons).orderBy(asc(schema.lessons.sortOrder));
   return rows.map(toAdminLesson);
+}
+
+export async function findLessonAdmin(id: string): Promise<AdminLesson | null> {
+  const db = await getDb();
+  const row = await db.query.lessons.findFirst({ where: eq(schema.lessons.id, id) });
+  return row ? toAdminLesson(row) : null;
 }
 
 export async function saveLesson(input: AdminLesson, actorId?: string): Promise<AdminLesson> {
@@ -147,8 +194,15 @@ export async function saveLesson(input: AdminLesson, actorId?: string): Promise<
   return toAdminLesson(saved!);
 }
 
-export async function deleteLesson(id: string) {
+export async function deleteLesson(id: string, force = false) {
   const db = await getDb();
+  const lesson = await db.query.lessons.findFirst({ where: eq(schema.lessons.id, id) });
+  if (!lesson) return;
+  const [{ progress }] = await db
+    .select({ progress: sql<number>`count(*)::int` })
+    .from(schema.lessonProgress)
+    .where(eq(schema.lessonProgress.lessonId, id));
+  await refuseIfLearnersDependOnIt(force, lesson.title, [["學習進度（看到哪、檢查站、筆記）", Number(progress)]]);
   await db.delete(schema.lessons).where(eq(schema.lessons.id, id));
   contentChanged();
 }
@@ -212,9 +266,16 @@ export async function listChallengesAdmin(): Promise<AdminChallenge[]> {
 async function dropOrphanedObjects(before: { objectKey: string | null }[], after: { objectKey: string | null }[]) {
   const kept = new Set(after.map((f) => f.objectKey).filter((k): k is string => Boolean(k)));
   const gone = [...new Set(before.map((f) => f.objectKey).filter((k): k is string => Boolean(k)))].filter((k) => !kept.has(k));
+  const { deleteObject } = await import("../services/r2");
   for (const key of gone) {
     await deleteObject(key).catch((err) => console.error("[r2] could not delete " + key, err));
   }
+}
+
+export async function findChallengeAdmin(id: string): Promise<AdminChallenge | null> {
+  const db = await getDb();
+  const row = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, id), with: { flags: true, hints: true, files: true } });
+  return row ? toAdminChallenge(row) : null;
 }
 
 export async function saveChallenge(input: AdminChallenge, actorId?: string): Promise<AdminChallenge> {
@@ -280,8 +341,22 @@ export async function saveChallenge(input: AdminChallenge, actorId?: string): Pr
   return toAdminChallenge(saved!);
 }
 
-export async function deleteChallenge(id: string) {
+export async function deleteChallenge(id: string, force = false) {
   const db = await getDb();
+  const challenge = await db.query.challenges.findFirst({ where: eq(schema.challenges.id, id) });
+  if (!challenge) return;
+  const [{ solved }] = await db
+    .select({ solved: sql<number>`count(*)::int` })
+    .from(schema.solves)
+    .where(eq(schema.solves.challengeId, id));
+  const [{ tried }] = await db
+    .select({ tried: sql<number>`count(*)::int` })
+    .from(schema.attempts)
+    .where(eq(schema.attempts.challengeId, id));
+  await refuseIfLearnersDependOnIt(force, challenge.name, [
+    ["解題紀錄", Number(solved)],
+    ["提交紀錄", Number(tried)],
+  ]);
   const files = await db.query.challengeFiles.findMany({ where: eq(schema.challengeFiles.challengeId, id) });
   await db.delete(schema.challenges).where(eq(schema.challenges.id, id));
   await dropOrphanedObjects(files, []);
@@ -311,6 +386,12 @@ export async function listEventsAdmin(): Promise<AdminEvent[]> {
   const db = await getDb();
   const rows = await db.select().from(schema.events).orderBy(asc(schema.events.startsAt));
   return rows.map(toAdminEvent);
+}
+
+export async function findEventAdmin(id: string): Promise<AdminEvent | null> {
+  const db = await getDb();
+  const [row] = await db.select().from(schema.events).where(eq(schema.events.id, id));
+  return row ? toAdminEvent(row) : null;
 }
 
 export async function saveEvent(input: AdminEvent): Promise<AdminEvent> {
@@ -376,7 +457,8 @@ async function loadTracksPublic(): Promise<PublicTrack[]> {
           durationSec: l.durationSec,
           summary: l.summary,
           content: l.content,
-          checkpoints: l.checkpoints,
+          // the correct option and its explanation stay on the server; POST /api/progress grades the answer
+          checkpoints: l.checkpoints.map((c) => ({ at: c.at, question: c.question, options: c.options, xp: c.xp })),
           labSlug: l.labSlug ?? undefined,
           xp: l.xp,
         })),
@@ -392,10 +474,20 @@ export async function getLessonVideo(lessonId: string) {
 }
 
 export function getChallengesPublic(): Promise<PublicChallenge[]> {
-  return cached("content:challenges", TTL.content, loadChallengesPublic);
+  return cached("content:challenges", TTL.content, () => loadChallengesPublic(false));
 }
 
-async function loadChallengesPublic(): Promise<PublicChallenge[]> {
+/**
+ * Same list, but with the parts a signed-in learner needs to actually play:
+ * the box address and the attachment download URLs. The challenge list, the
+ * home page and the dashboard are readable without an account, so those get
+ * the stripped version above — a target's host and port are not public info.
+ */
+export function getChallengesForLearner(): Promise<PublicChallenge[]> {
+  return cached("content:challenges:full", TTL.content, () => loadChallengesPublic(true));
+}
+
+async function loadChallengesPublic(full: boolean): Promise<PublicChallenge[]> {
   const db = await getDb();
   const rows = await db.query.challenges.findMany({
     where: and(eq(schema.challenges.status, "published"), sql`${schema.challenges.releasedAt} is null or ${schema.challenges.releasedAt} <= now()`),
@@ -430,8 +522,9 @@ async function loadChallengesPublic(): Promise<PublicChallenge[]> {
       kind: c.kind,
       blurb: c.blurb,
       description: c.description,
-      hints: [...c.hints].sort((a, b) => a.sortOrder - b.sortOrder).map((h) => ({ id: h.id, text: h.text, cost: h.cost })),
-      flags: [...c.flags].sort((a, b) => a.sortOrder - b.sortOrder).map((f) => ({ id: f.flagId, label: f.label, sha256: f.sha256, points: f.points })),
+      // the browser gets nothing it could use to skip the server: no hint text, no flag digests
+      hints: [...c.hints].sort((a, b) => a.sortOrder - b.sortOrder).map((h) => ({ id: h.id, cost: h.cost })),
+      flags: [...c.flags].sort((a, b) => a.sortOrder - b.sortOrder).map((f) => ({ id: f.flagId, label: f.label, points: f.points })),
       points: c.flags.reduce((n, f) => n + f.points, 0),
       solves: c.baseSolves + Number(solveCount),
       rating: c.rating,
@@ -439,9 +532,13 @@ async function loadChallengesPublic(): Promise<PublicChallenge[]> {
       tags: c.tags,
       releasedAt: (c.releasedAt ?? c.createdAt).toISOString(),
       firstBlood: fbUser ? { handle: fbUser.handle, school: fbUser.school?.short ?? "", time: new Date(fb!.solvedAt).toISOString() } : undefined,
-      connection: c.connectionType !== "none" && c.connectionValue ? { type: c.connectionType, value: c.connectionValue } : undefined,
+      // the address and the download links only go out to signed-in learners
+      connection:
+        c.connectionType !== "none" && c.connectionValue
+          ? { type: c.connectionType, value: full ? c.connectionValue : "" }
+          : undefined,
       files: c.files.map((f) => f.name),
-      fileUrls: Object.fromEntries(c.files.filter((f) => f.objectKey).map((f) => [f.name, publicUrl(f.objectKey!)])),
+      fileUrls: full ? Object.fromEntries(c.files.filter((f) => f.objectKey).map((f) => [f.name, publicUrl(f.objectKey!)])) : {},
       tutorial: c.tutorial || undefined,
       lesson: c.lessonRef ?? undefined,
     } as PublicChallenge & { fileUrls: Record<string, string | null> };

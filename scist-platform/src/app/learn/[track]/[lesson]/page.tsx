@@ -6,6 +6,8 @@ import type { LessonVideo } from "@/components/learn/video-stage";
 import { lessonBySlug } from "@/data/tracks";
 import { getTracksPublic, getChallengesPublic, getLessonVideo } from "@/server/repo/content";
 import { playbackUrl } from "@/server/services/stream";
+import { getCurrentUser } from "@/server/auth";
+import { revealedCheckpoints } from "@/server/repo/learner";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +35,13 @@ export default async function LessonPage(
   if (!track) notFound();
   if (!lesson) notFound();
 
-  const [lab, source] = await Promise.all([
+  const user = await getCurrentUser();
+  const [lab, source, revealed] = await Promise.all([
     lesson.labSlug ? getChallengesPublic().then((all) => all.find((c) => c.slug === lesson.labSlug)) : Promise.resolve(undefined),
     getLessonVideo(lesson.id),
+    // checkpoints this learner already passed come back with their answer and
+    // explanation so revisiting a finished lesson is still useful
+    user ? revealedCheckpoints(user.id, trackSlug, lessonSlug).catch(() => ({})) : Promise.resolve({}),
   ]);
 
   // a Stream upload that is still processing plays the stand-in until it is ready
@@ -59,6 +65,7 @@ export default async function LessonPage(
           lesson={lesson}
           lab={lab}
           video={video}
+          revealed={revealed}
         />
       </div>
     </main>

@@ -1,10 +1,11 @@
 import { Lightbulb, AlertTriangle, Info } from "lucide-react";
+import { CALLOUT_META } from "@/lib/callout";
 import type { ContentBlock } from "@/data/tracks";
 
-const CALLOUT = {
-  tip: { Icon: Lightbulb, color: "var(--color-accent)", label: "小技巧" },
-  warn: { Icon: AlertTriangle, color: "var(--color-amber)", label: "注意" },
-  info: { Icon: Info, color: "var(--color-blue)", label: "補充" },
+const CALLOUT_ICON = {
+  tip: Lightbulb,
+  warn: AlertTriangle,
+  info: Info,
 } as const;
 
 function CodeBlock({ lang, lines }: { lang: string; lines: string[] }) {
@@ -60,7 +61,8 @@ export function ContentBlocks({ blocks }: { blocks: ContentBlock[] }) {
             </ul>
           );
         if (b.type === "code") return <CodeBlock key={i} lang={b.lang} lines={b.lines} />;
-        const { Icon, color, label } = CALLOUT[b.tone];
+        const { color, label } = CALLOUT_META[b.tone];
+        const Icon = CALLOUT_ICON[b.tone];
         return (
           <div
             key={i}

@@ -113,7 +113,6 @@ export function SettingsAdmin() {
             </Field>
             <div className="sm:col-span-2 flex flex-col gap-2">
               <Toggle checked={draft.xp.hintRefundOnSolve} onChange={(v) => setDraft({ ...draft, xp: { ...draft.xp, hintRefundOnSolve: v } })} label="解出後退還提示扣的 XP" hint="鼓勵用提示；預設關閉，讓學員先自己想" />
-              <Toggle checked={draft.features.guestProgress} onChange={(v) => setDraft({ ...draft, features: { ...draft.features, guestProgress: v } })} label="允許未登入者累積進度" hint="存在瀏覽器，登入後可合併" />
               <Toggle checked={draft.features.instances} onChange={(v) => setDraft({ ...draft, features: { ...draft.features, instances: v } })} label="開放啟動靶機環境" hint="關閉時題目頁只顯示固定連線資訊" />
               <Toggle checked={draft.features.questions} onChange={(v) => setDraft({ ...draft, features: { ...draft.features, questions: v } })} label="開放發問" />
             </div>

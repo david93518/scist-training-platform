@@ -18,9 +18,12 @@ import { env, features } from "./env";
 import { getDb, schema } from "./db";
 import { SESSION_COOKIE, sessionSecretBytes } from "./session-secret";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { bannedNotice } from "@/lib/ban-notice";
+import { getSettings } from "./repo/settings";
 import { SCHOOLS } from "@/data/schools";
+import { can, minRoleFor, ROLE_LABEL, ROLE_RANK, type Capability, type Role } from "@/lib/permissions";
 
-export type Role = "student" | "ta" | "instructor" | "admin";
+export type { Role };
 
 export interface Session {
   userId: string;
@@ -75,15 +78,29 @@ export async function getSession(): Promise<Session | null> {
   return verifySession(token);
 }
 
-/** Full read: also confirms the user still exists and is not banned. */
-export async function getCurrentUser() {
+/**
+ * Full read: also confirms the user still exists and is not banned. 停權跟沒登入
+ * 分開回，讓 /api/me 有辦法告訴前台「你是被停權了，不是自己登出的」。
+ */
+export async function readSessionUser() {
   const session = await getSession();
-  if (!session) return null;
+  if (!session) return { user: null, banned: false };
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: eq(schema.users.id, session.userId) });
-  if (!user || user.bannedAt) return null;
+  if (!user) return { user: null, banned: false };
+  if (user.bannedAt) return { user: null, banned: true };
   // role in the database wins over the one baked into the cookie
-  return { ...user, role: user.role as Role };
+  return { user: { ...user, role: user.role as Role }, banned: false };
+}
+
+export async function getCurrentUser() {
+  return (await readSessionUser()).user;
+}
+
+/** 停權提示要帶求助管道，管道寫在站點設定的 Discord 邀請連結裡 */
+async function bannedError() {
+  const { site } = await getSettings();
+  return new ApiError(403, bannedNotice(site.discordInvite));
 }
 
 export class ApiError extends Error {
@@ -94,7 +111,7 @@ export class ApiError extends Error {
   }
 }
 
-export const ROLE_RANK: Record<Role, number> = { student: 0, ta: 1, instructor: 2, admin: 3 };
+export { ROLE_RANK };
 
 const HANDLE_RE = /^[a-z0-9_.-]{3,20}$/;
 
@@ -162,9 +179,11 @@ export async function loginWithPassword(input: { handle: string; password: strin
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: eq(schema.users.handle, handle) });
   // 同一個錯誤，避免用「沒有這個帳號」探測名單
-  if (!user || user.bannedAt || !user.passwordHash || !(await verifyPassword(input.password, user.passwordHash))) {
+  if (!user || !user.passwordHash || !(await verifyPassword(input.password, user.passwordHash))) {
     throw new ApiError(401, "帳號或密碼不對");
   }
+  // 密碼對了才講停權，這樣既不會拿來探帳號，本人也知道自己不是打錯密碼
+  if (user.bannedAt) throw await bannedError();
   await db.update(schema.users).set({ lastSeenAt: new Date() }).where(eq(schema.users.id, user.id));
   return { userId: user.id, handle: user.handle, role: user.role as Role };
 }
@@ -208,7 +227,19 @@ export async function requireUser() {
 
 export async function requireRole(min: Role) {
   const user = await requireUser();
-  if (ROLE_RANK[user.role] < ROLE_RANK[min]) throw new ApiError(403, "需要" + min + "以上的權限");
+  if (ROLE_RANK[user.role] < ROLE_RANK[min]) throw new ApiError(403, "需要" + ROLE_LABEL[min] + "以上的權限");
+  return user;
+}
+
+/**
+ * 後台 API 一律走這個。權限對照表在 src/lib/permissions.ts，
+ * 前端側邊欄與按鈕讀的是同一張表，所以看得到的就一定按得動。
+ */
+export async function requireCap(cap: Capability) {
+  const user = await requireUser();
+  if (!can(user.role, cap)) {
+    throw new ApiError(403, "這個功能需要" + ROLE_LABEL[minRoleFor(cap)] + "以上的權限，你目前是" + ROLE_LABEL[user.role]);
+  }
   return user;
 }
 
@@ -268,6 +299,8 @@ export async function upsertDiscordUser(d: DiscordUser): Promise<Session> {
 
   const existing = await db.query.users.findFirst({ where: eq(schema.users.discordId, d.id) });
   if (existing) {
+    // Discord 這條路沒有密碼可以打錯，身分已經由 OAuth 證明了，直接講停權
+    if (existing.bannedAt) throw await bannedError();
     const role = admins.includes(d.id) && existing.role !== "admin" ? "admin" : existing.role;
     await db
       .update(schema.users)

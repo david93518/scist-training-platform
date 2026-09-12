@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import {
   ArrowRight,
   Award,
@@ -12,7 +11,6 @@ import {
   Lightbulb,
   ListChecks,
   NotebookPen,
-  RotateCcw,
   Target,
   TrendingUp,
   Zap,
@@ -22,16 +20,17 @@ import {
   HexAvatar,
   ProgressBar,
   LinkButton,
-  Button,
   DifficultyBadge,
 } from "@/components/ui/primitives";
 import { allLessons, trackLessonCount, type Track } from "@/data/tracks";
 import type { Challenge } from "@/data/challenges";
-import { SCHOOLS, schoolById } from "@/data/schools";
+import { schoolName } from "@/data/schools";
+import { ProfileForm } from "@/components/dashboard/profile-form";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
 import { useCertifications, useRanks } from "@/components/settings-provider";
 import { Certifications } from "@/components/dashboard/certifications";
 import { PasswordForm } from "@/components/dashboard/password-form";
+import { LoginWall } from "@/components/login-wall";
 import { evaluateCertifications, highestCert, type CertRole, type CertStats } from "@/lib/certifications";
 import { useProgress, useHydrated, lessonKey } from "@/store/progress";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
@@ -47,8 +46,10 @@ const LOG_ICON = {
 export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges: Challenge[] }) {
   const hydrated = useHydrated();
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const xp = useProgress((s) => s.xp);
   const handle = useProgress((s) => s.handle);
+  const displayName = useProgress((s) => s.displayName);
   const schoolId = useProgress((s) => s.schoolId);
   const completed = useProgress((s) => s.completedLessons);
   const role = useProgress((s) => s.role);
@@ -57,33 +58,42 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
   const notes = useProgress((s) => s.notes);
   const watched = useProgress((s) => s.watched);
   const log = useProgress((s) => s.log);
-  const setProfile = useProgress((s) => s.setProfile);
-  const reset = useProgress((s) => s.reset);
-
-  const [editing, setEditing] = useState(false);
-  const [draftHandle, setDraftHandle] = useState("");
 
   const ranks = useRanks();
   const certRules = useCertifications();
-  const myXp = hydrated ? xp : 0;
+
+  // /dashboard is gated in src/proxy.ts; this only shows when the session
+  // expired or the account was suspended while the page was open.
+  if (hydrated && sessionChecked && !authenticated) {
+    return (
+      <LoginWall
+        title="登入後才看得到進度"
+        desc="XP、階級、課程完成度、解題紀錄與筆記都記在你的帳號上。登入或註冊後會直接回到這裡。"
+      />
+    );
+  }
+
+  // real numbers once the account is in the store; zeros until /api/me answers
+  const ready = hydrated && authenticated;
+  const myXp = ready ? xp : 0;
   const rank = rankFor(myXp, ranks);
   const nxt = nextRank(myXp, ranks);
 
-  const doneLessons = hydrated ? completed.length : 0;
+  const doneLessons = ready ? completed.length : 0;
   const totalLessons = Math.max(1, tracks.reduce((n, t) => n + trackLessonCount(t), 0));
-  const solvedFull = hydrated
+  const solvedFull = ready
     ? challenges.filter((c) => (solved[c.slug]?.length ?? 0) === c.flags.length).length
     : 0;
-  const checkpointCount = hydrated
+  const checkpointCount = ready
     ? Object.values(checkpoints).reduce((n, arr) => n + arr.length, 0)
     : 0;
-  const noteKeys = hydrated
+  const noteKeys = ready
     ? Object.entries(notes).filter(([, v]) => v.trim().length > 0)
     : [];
 
   // next thing to do: first unfinished lesson of the most-advanced track
   const upNext = (() => {
-    if (!hydrated) return null;
+    if (!ready) return null;
     for (const t of tracks) {
       for (const l of allLessons(t)) {
         const key = lessonKey(t.slug, l.slug);
@@ -96,14 +106,14 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
     return null;
   })();
 
-  const recommended = hydrated
+  const recommended = ready
     ? challenges.filter((c) => (solved[c.slug]?.length ?? 0) === 0)
         .sort((a, b) => a.points - b.points)
         .slice(0, 3)
     : challenges.slice(0, 3);
 
   const certStats: CertStats = {
-    completedTracks: hydrated
+    completedTracks: ready
       ? tracks
           // every() is true for an empty track, which would hand out the badge for free
           .filter((t) => {
@@ -114,7 +124,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
       : [],
     lessons: doneLessons,
     solves: solvedFull,
-    role: (hydrated ? role : "student") as CertRole,
+    role: (ready ? role : "student") as CertRole,
   };
   const trackNameOf = (slug: string) => tracks.find((t) => t.slug === slug)?.name;
   const earnedCert = highestCert(evaluateCertifications(certStats, certRules, trackNameOf));
@@ -124,84 +134,55 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
       {/* identity */}
       <div className="card border-gradient overflow-hidden">
         <div className="grid gap-6 p-6 sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-7">
-          <HexAvatar seed={hydrated ? handle : "guest"} size={72} />
+          {ready ? (
+            <HexAvatar seed={handle} size={72} />
+          ) : (
+            <span className="clip-hex h-[72px] w-[72px] animate-pulse-soft bg-bg-4" aria-hidden="true" />
+          )}
 
           <div className="min-w-0">
-            {editing && !authenticated ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={draftHandle}
-                  onChange={(e) => setDraftHandle(e.target.value)}
-                  placeholder={handle}
-                  maxLength={16}
-                  className="h-9 rounded-lg border border-line bg-bg-0 px-3 font-mono text-[14px] text-fg outline-none focus:border-accent/50"
-                />
-                <select
-                  defaultValue={schoolId}
-                  onChange={(e) => setProfile(draftHandle || handle, e.target.value)}
-                  className="h-9 rounded-lg border border-line bg-bg-0 px-2 text-[13px] text-fg-2 outline-none"
-                >
-                  {SCHOOLS.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.short}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setProfile(draftHandle.trim() || handle, schoolId);
-                    setEditing(false);
-                  }}
-                >
-                  儲存
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="font-mono text-[26px] font-extrabold tracking-tight">
-                  {hydrated ? handle : "guest"}
-                </h1>
-                <span
-                  className="rounded-md border px-2 py-0.5 text-[12px] font-semibold"
-                  style={{
-                    color: rank.color,
-                    borderColor: rank.color + "55",
-                    background: rank.color + "14",
-                  }}
-                >
-                  {rank.name}
-                </span>
-                {earnedCert ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-[26px] font-extrabold tracking-tight">
+                {ready ? (
+                  displayName || handle
+                ) : (
                   <span
-                    className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[12px] font-semibold"
-                    style={{
-                      color: earnedCert.rule.color,
-                      borderColor: earnedCert.rule.color + "55",
-                      background: earnedCert.rule.color + "14",
-                    }}
-                    title={earnedCert.rule.blurb + "｜" + earnedCert.rule.goal}
-                  >
-                    <Award size={11} />
-                    {earnedCert.rule.name}認證
-                  </span>
-                ) : null}
-                {authenticated ? null : (
-                  <button
-                    onClick={() => {
-                      setDraftHandle(handle);
-                      setEditing(true);
-                    }}
-                    className="text-[12px] text-fg-3 underline-offset-4 hover:text-fg hover:underline"
-                  >
-                    編輯
-                  </button>
+                    className="inline-block h-7 w-36 animate-pulse-soft rounded-md bg-bg-4 align-middle"
+                    aria-hidden="true"
+                  />
                 )}
-              </div>
-            )}
+              </h1>
+              <span
+                className="rounded-md border px-2 py-0.5 text-[12px] font-semibold"
+                style={{
+                  color: rank.color,
+                  borderColor: rank.color + "55",
+                  background: rank.color + "14",
+                }}
+              >
+                {rank.name}
+              </span>
+              {earnedCert ? (
+                <span
+                  className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[12px] font-semibold"
+                  style={{
+                    color: earnedCert.rule.color,
+                    borderColor: earnedCert.rule.color + "55",
+                    background: earnedCert.rule.color + "14",
+                  }}
+                  title={earnedCert.rule.blurb + "｜" + earnedCert.rule.goal}
+                >
+                  <Award size={11} />
+                  {earnedCert.rule.name}認證
+                </span>
+              ) : null}
+            </div>
 
             <div className="mt-1 text-[13px] text-fg-3">
-              {schoolById(hydrated ? schoolId : "tnfsh")?.name} · {rank.blurb}
+              {ready && displayName && displayName !== handle ? (
+                <span className="mr-2 font-mono text-fg-2">@{handle}</span>
+              ) : null}
+              {schoolName(ready ? schoolId : "")} · {rank.blurb}
             </div>
 
             <div className="mt-4 max-w-md">
@@ -240,7 +221,12 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
         </div>
       </div>
 
-      {hydrated && authenticated ? <PasswordForm /> : null}
+      {ready ? (
+        <>
+          <ProfileForm />
+          <PasswordForm />
+        </>
+      ) : null}
 
       {/* up next */}
       {upNext ? (
@@ -270,6 +256,12 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
             <ArrowRight size={15} />
           </span>
         </Link>
+      ) : !ready ? (
+        /* profile still loading: saying "all done" here would be a lie to a new learner */
+        <div className="card flex items-center gap-4 p-6" aria-hidden="true">
+          <span className="clip-hex h-12 w-12 animate-pulse-soft bg-bg-4" />
+          <span className="h-5 w-64 animate-pulse-soft rounded-md bg-bg-4" />
+        </div>
       ) : (
         <div className="card flex items-center gap-3 p-6">
           <Check size={18} className="text-accent" />
@@ -289,7 +281,7 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
           <div className="flex flex-col gap-4">
             {tracks.map((t) => {
               const lessons = allLessons(t);
-              const done = hydrated
+              const done = ready
                 ? lessons.filter((l) => completed.includes(lessonKey(t.slug, l.slug))).length
                 : 0;
               return (
@@ -327,7 +319,14 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
             <span className="text-[14px] font-bold">你的紀錄</span>
           </div>
 
-          {!hydrated || log.length === 0 ? (
+          {!ready ? (
+            /* a returning learner must not be told "no records yet" while /api/me is in flight */
+            <div className="flex flex-1 flex-col gap-2.5 py-2" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <span key={i} className="h-8 w-full animate-pulse-soft rounded-md bg-bg-4" />
+              ))}
+            </div>
+          ) : log.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
               <Zap size={20} className="text-fg-3" />
               <p className="text-[13px] text-fg-3">
@@ -439,24 +438,10 @@ export function Dashboard({ tracks, challenges }: { tracks: Track[]; challenges:
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between rounded-xl border border-line bg-bg-1/60 px-5 py-4">
+      <div className="rounded-xl border border-line bg-bg-1/60 px-5 py-4">
         <p className="text-[12px] leading-relaxed text-fg-3">
-          {hydrated && authenticated
-            ? "進度已綁定你的帳號，跨裝置同步；XP 與排行榜由伺服器計算。"
-            : "進度儲存在這台裝置的瀏覽器。登入後會一併帶到你的帳號，跨裝置同步。"}
+          進度已綁定你的帳號，跨裝置同步；XP 與排行榜由伺服器計算。
         </p>
-        {hydrated && authenticated ? null : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (confirm("確定要清除所有進度嗎？這個動作無法復原。")) reset();
-            }}
-          >
-            <RotateCcw size={13} />
-            清除進度
-          </Button>
-        )}
       </div>
     </div>
   );

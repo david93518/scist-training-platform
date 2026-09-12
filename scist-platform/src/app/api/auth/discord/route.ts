@@ -6,9 +6,8 @@ import { features } from "@/server/env";
 import { json } from "@/server/http";
 
 /** Only same-origin paths may be used as a post-login destination. */
-export function safeNext(raw: string | null) {
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
-}
+export { safeNextPath as safeNext } from "@/lib/safe-next";
+import { safeNextPath as safeNext } from "@/lib/safe-next";
 
 /**
  * Step 1: send the browser to Discord. A random state cookie guards the

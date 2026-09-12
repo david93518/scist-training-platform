@@ -25,6 +25,7 @@ interface SpawnResponse {
   shared: boolean;
 }
 
+/** Per-learner challenge environment. Starting and stopping always go through the server. */
 export function InstancePanel({ challenge }: { challenge: Challenge }) {
   const info = useProgress((s) => s.instances[challenge.slug]);
   const spawn = useProgress((s) => s.spawnInstance);
@@ -37,6 +38,12 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  /**
+   * The server answered that this challenge has no container to start — it is a
+   * fixed, shared target. Showing it as a running personal instance was a lie
+   * that also disappeared on reload, because nothing was ever stored.
+   */
+  const [sharedAddress, setSharedAddress] = useState<string | null>(null);
   const now = useNow(1000);
   const elapsed = info && now ? Math.max(0, (now - info.startedAt) / 1000) : 0;
   const remaining = info?.expiresAt && now ? Math.max(0, (new Date(info.expiresAt).getTime() - now) / 1000) : null;
@@ -45,22 +52,19 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
 
   const running = hydrated && instancesOn && Boolean(info);
   // the server hands out the real address once an instance exists; the
-  // challenge's fixed connection string is the shared / guest fallback
-  const address = running && info?.host ? info.host + (info.port ? ":" + info.port : "") : (challenge.connection?.value ?? "");
+  // challenge's fixed connection string is the shared fallback
+  const address = running && info?.host ? info.host + (info.port ? ":" + info.port : "") : (sharedAddress ?? challenge.connection?.value ?? "");
 
   const start = async () => {
     setError(null);
     setBooting(true);
-    if (!authenticated) {
-      setTimeout(() => {
-        spawn(challenge.slug);
-        setBooting(false);
-      }, 1200);
-      return;
-    }
     try {
       const res = await api<SpawnResponse>("/api/challenges/" + challenge.slug + "/instance", { method: "POST" });
-      spawn(challenge.slug, { host: res.host, port: res.port, expiresAt: res.expiresAt });
+      if (res.shared) {
+        setSharedAddress(res.host ?? challenge.connection?.value ?? "");
+      } else {
+        spawn(challenge.slug, { host: res.host, port: res.port, expiresAt: res.expiresAt });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "啟動失敗");
     } finally {
@@ -70,17 +74,15 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
 
   const stop = async () => {
     setError(null);
-    if (authenticated) {
-      setStopping(true);
-      try {
-        await api("/api/challenges/" + challenge.slug + "/instance", { method: "DELETE" });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "終止失敗");
-      } finally {
-        setStopping(false);
-      }
+    setStopping(true);
+    try {
+      await api("/api/challenges/" + challenge.slug + "/instance", { method: "DELETE" });
+      kill(challenge.slug);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "終止失敗");
+    } finally {
+      setStopping(false);
     }
-    kill(challenge.slug);
   };
 
   const copy = async () => {
@@ -145,29 +147,44 @@ export function InstancePanel({ challenge }: { challenge: Challenge }) {
               終止環境
             </Button>
             <p className="mt-2 text-[11.5px] leading-relaxed text-fg-3">
-              {authenticated
-                ? "這是你專屬的環境，兩小時後自動回收。壞了就終止再重開。"
-                : "未登入時只是模擬。登入後會啟動你專屬的 Docker 實例，兩小時後自動回收。"}
+              這是你專屬的環境，兩小時後自動回收。壞了就終止再重開。
             </p>
           </div>
         ) : instancesOn ? (
           <div className="mt-3.5">
-            <p className="text-[12.5px] leading-relaxed text-fg-2">
-              每位學員拿到自己的獨立環境，想怎麼打就怎麼打，壞了重開就好。
-            </p>
-            <Button className="mt-3 w-full" onClick={start} disabled={booting}>
-              {booting ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  啟動中
-                </>
-              ) : (
-                <>
-                  <Play size={13} />
-                  啟動環境
-                </>
-              )}
-            </Button>
+            {sharedAddress ? (
+              <>
+                <div className="mono-label mb-1.5">{CONNECTION_LABEL[challenge.connection.type]}</div>
+                <div className="flex items-center gap-2 rounded-lg border border-line bg-bg-0 px-3 py-2.5">
+                  <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-accent">{sharedAddress}</code>
+                  <button onClick={copy} className="shrink-0 text-fg-3 transition-colors hover:text-fg" aria-label="複製連線資訊">
+                    {copied ? <Check size={14} className="text-accent" /> : <Copy size={14} />}
+                  </button>
+                </div>
+                <p className="mt-2 text-[11.5px] leading-relaxed text-fg-3">
+                  這一題是固定環境，大家連同一台，不用啟動也不會過期。請不要破壞它，其他人也在用。
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[12.5px] leading-relaxed text-fg-2">
+                  每位學員拿到自己的獨立環境，想怎麼打就怎麼打，壞了重開就好。
+                </p>
+                <Button className="mt-3 w-full" onClick={start} disabled={booting || !authenticated}>
+                  {booting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      啟動中
+                    </>
+                  ) : (
+                    <>
+                      <Play size={13} />
+                      啟動環境
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           /* settings.features.instances off: hand out the shared address only */

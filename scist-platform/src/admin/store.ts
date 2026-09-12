@@ -117,8 +117,8 @@ export function buildSeed(): AdminData {
     rating: c.rating,
     status: "published",
     releasedAt: c.releasedAt,
-    flags: c.flags.map((f) => ({ id: c.id + "-" + f.id, flagId: f.id, label: f.label, sha256: f.sha256, points: f.points })),
-    hints: c.hints.map((h) => ({ id: c.id + "-" + h.id, text: h.text, cost: h.cost })),
+    flags: c.flags.map((f) => ({ id: c.id + "-" + f.id, flagId: f.id, label: f.label, sha256: f.sha256 ?? "", points: f.points })),
+    hints: c.hints.map((h) => ({ id: c.id + "-" + h.id, text: h.text ?? "", cost: h.cost })),
     files: (c.files ?? []).map((name) => ({ id: nanoid(8), name, size: null, objectKey: null, status: "listed" as const })),
     updatedAt: now,
   }));
@@ -165,6 +165,7 @@ export function buildSeed(): AdminData {
     authorHandle: q.author,
     votes: q.votes,
     createdAt: q.createdAt,
+    editedAt: null,
     acceptedAnswerId: q.answers.find((a) => a.accepted)?.id ?? null,
     answers: q.answers.map((a) => ({
       id: a.id,
@@ -172,6 +173,7 @@ export function buildSeed(): AdminData {
       authorRole: a.role,
       body: a.body,
       createdAt: a.createdAt,
+      editedAt: null,
       votes: a.votes,
     })),
   }));

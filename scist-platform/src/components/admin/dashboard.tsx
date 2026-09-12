@@ -5,6 +5,8 @@ import { Users, Activity, GraduationCap, Flag, FileWarning, Plus, Upload, ArrowR
 import { getAdminApi } from "@/admin/api";
 import { PageTitle, SectionCard, StatusBadge, Table, Td, Th, Tr, ToastHost, useAsync } from "@/components/admin/ui";
 import { ProgressBar, buttonClass } from "@/components/ui/primitives";
+import { can } from "@/lib/permissions";
+import { useProgress } from "@/store/progress";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 
@@ -13,6 +15,8 @@ export function AdminDashboard() {
   const stats = useAsync(() => api.stats());
   const status = useAsync(() => api.status());
   const now = useNow(60_000);
+  // 匯入的介面在設定頁裡，講師看不到那一頁
+  const mayImport = can(useProgress((s) => s.role), "content.import");
 
   const s = stats.data;
   const st = status.data;
@@ -51,10 +55,12 @@ export function AdminDashboard() {
               <Plus size={14} />
               新增題目
             </Link>
-            <Link href="/admin/settings#import" className={buttonClass("outline", "sm")}>
-              <Upload size={14} />
-              匯入 CTFd
-            </Link>
+            {mayImport ? (
+              <Link href="/admin/settings#import" className={buttonClass("outline", "sm")}>
+                <Upload size={14} />
+                匯入 CTFd
+              </Link>
+            ) : null}
           </>
         }
       />

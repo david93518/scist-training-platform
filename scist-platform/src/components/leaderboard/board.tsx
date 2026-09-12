@@ -5,10 +5,11 @@ import { Trophy, Flame, School, Zap } from "lucide-react";
 import { PlayerRow, RankNumber } from "@/components/leaderboard/player-row";
 import { HexAvatar, ProgressBar } from "@/components/ui/primitives";
 import type { Player, SchoolStanding } from "@/data/players";
-import { schoolById } from "@/data/schools";
+import { schoolById, schoolShort } from "@/data/schools";
 import { rankFor, nextRank, rankProgress } from "@/lib/xp";
 import { useRanks } from "@/components/settings-provider";
 import { useProgress, useHydrated } from "@/store/progress";
+import { LoginWall } from "@/components/login-wall";
 import { cn, formatNumber } from "@/lib/utils";
 
 type Tab = "weekly" | "alltime" | "schools";
@@ -26,6 +27,7 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
   const schoolId = useProgress((s) => s.schoolId);
   const userId = useProgress((s) => s.userId);
   const authenticated = useProgress((s) => s.authenticated);
+  const sessionChecked = useProgress((s) => s.sessionChecked);
   const hydrated = useHydrated();
   const ranks = useRanks();
 
@@ -129,16 +131,27 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
       </div>
 
       <aside className="flex flex-col gap-4">
+        {/* while /api/me is still in flight, neither state is known: hold the space
+            so a signed-in reader never sees the login card flash past */}
+        {!hydrated || !sessionChecked ? (
+          <div className="card min-h-[220px] border-accent/25 p-5" aria-hidden />
+        ) : !authenticated ? (
+          <LoginWall
+            className="border-accent/25"
+            title="你的位置"
+            desc="登入後這裡會顯示你的 XP、階級與名次。解出來的題目也才會進榜。"
+          />
+        ) : (
         <div className="card border-accent/25 p-5">
           <div className="mono-label mb-3">你的位置</div>
           <div className="flex items-center gap-3">
-            <HexAvatar seed={hydrated ? handle : "guest"} size={46} />
+            <HexAvatar seed={handle} size={46} />
             <div className="min-w-0">
               <div className="font-mono text-[15px] font-bold">
-                {hydrated ? handle : "guest"}
+                {handle}
               </div>
               <div className="text-[12px] text-fg-3">
-                {schoolById(hydrated ? schoolId : "tnfsh")?.short} ·{" "}
+                {schoolShort(schoolId)} ·{" "}
                 <span style={{ color: rank.color }}>{rank.name}</span>
               </div>
             </div>
@@ -167,18 +180,11 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
           <div className="mt-4 flex items-center gap-2 border-t border-line pt-3.5">
             <Zap size={13} className="text-accent" />
             <span className="text-[12.5px] text-fg-2">
-              {hydrated && authenticated ? (
-                <>
-                  你在總榜第 <span className="font-mono font-bold text-fg">{myPlace}</span> 名
-                </>
-              ) : (
-                <>
-                  登入後以目前分數會在總榜第 <span className="font-mono font-bold text-fg">{myPlace}</span> 名
-                </>
-              )}
+              你在總榜第 <span className="font-mono font-bold text-fg">{myPlace}</span> 名
             </span>
           </div>
         </div>
+        )}
 
         <div className="card p-5">
           <div className="mono-label mb-3">階級門檻</div>
