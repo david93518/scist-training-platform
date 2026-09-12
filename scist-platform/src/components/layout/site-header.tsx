@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { Suspense, useState, useSyncExternalStore } from "react";
 import { Menu, X, Zap, ChevronRight } from "lucide-react";
 import { LoginMenu } from "@/components/layout/login-menu";
 import { Logo } from "@/components/ui/logo";
@@ -97,7 +97,9 @@ export function SiteHeader() {
             </Link>
           ) : null}
 
-          <LoginMenu />
+          <Suspense fallback={<span className="h-10 w-24" />}>
+            <LoginMenu />
+          </Suspense>
 
           <Link href="/learn" className={buttonClass("primary", "sm", "hidden md:inline-flex")}>
             開始學習
