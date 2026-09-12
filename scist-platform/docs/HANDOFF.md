@@ -13,9 +13,10 @@
 | 前台讀資料庫 | 所有頁面 `force-dynamic`，用 `src/server/repo/*` 取資料；`src/data` 只剩型別與 seed | 後台改課名，重新整理 `/learn` 立刻看到 |
 | 資料庫零設定 | 沒設 `DATABASE_URL` 用 PGlite；空資料庫在開發環境自動灌示範內容 | 刪掉 `.data/pglite` 再 `pnpm dev`，首頁有內容 |
 | 登入 | 帳號密碼（`POST /api/auth/register`、`/login`）；可選 Discord；session 是 httpOnly JWT cookie | 註冊一個帳號，`GET /api/me` 回 `authenticated: true`；學員打不開 `/admin` |
-| 進度同步 | `src/store/progress.ts`：登入後每個動作打 API，再從 `/api/me` 回填；訪客留在瀏覽器 | 兩個瀏覽器同帳號，一邊答檢查站，另一邊重整看到 XP |
-| 訪客進度合併 | 第一次登入時把瀏覽器裡的檢查站、看課進度、筆記重播到帳號 | 未登入答一站再登入，`/api/me` 的 `checkpoints` 有它，XP 也加了 |
-| Flag、提示、靶機、報名、發問 | 登入者走 API（伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord）；訪客只在瀏覽器模擬 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
+| 進度同步 | `src/store/progress.ts`：登入後每個動作打 API，再從 `/api/me` 回填。沒登入時 store 是空的，寫入動作直接不做事 | 兩個瀏覽器同帳號，一邊答檢查站，另一邊重整看到 XP |
+| 登入牆 | `src/proxy.ts` 擋 `/dashboard`、課程播放頁、題目頁，導回 `/?login=1&next=原路徑`；`next` 過 `src/lib/safe-next.ts` 只收站內路徑 | 未登入開 `/challenges/welcome` 被導回首頁登入框，註冊完直接落在該題 |
+| Flag、提示、靶機、報名、發問 | 一律走 API：伺服器比對 flag、扣 XP、開容器、佔名額、同步 Discord。瀏覽器拿不到 flag 雜湊，也拿不到還沒付錢的提示內文 | 題目頁送出 `SCIST{w3lc0m3_t0_th3_g4t3}`，排行榜多一筆 |
+| 檢查站判分 | 正解與解析只在伺服器；`POST /api/progress` 的 `checkpoint` 要帶 `choice`，答錯不給 XP 也不給解析 | 用 curl 對同一站送四個選項，只有一個回 `correct: true` |
 | 影片 | `video-stage.tsx` 支援 YouTube IFrame API 與 Cloudflare Stream SDK；播到檢查站自動暫停，答對繼續 | 後台把一課設成 YouTube，播放器會在 30% / 60% / 90% 停下 |
 | 後台 | 預設打 `/api/admin/*`；`src/proxy.ts` 在伺服器端擋掉學員，導回 `/?login=admin&next=原路徑`，登入後回到原頁。角色只能由管理員指派 | 未登入開 `/admin/lessons` 被導回首頁並跳出登入框；學員身分開 `/admin` 會看到權限不足 |
 | 角色權限 | 助教／講師／管理員看到的後台不一樣。四個角色的能力表在 `src/lib/permissions.ts`，API 守門、側邊欄、按鈕都讀它，看得到就一定按得動 | 助教登入後 `/admin` 會落在「問答」，側邊欄只有問答與靶機；講師看不到操作紀錄與設定 |
@@ -51,7 +52,7 @@ INTEGRATIONS.md 第 7 節。第一次部署把 `AUTO_SEED=1` 打開讓正式資�
 
 ## 已知的邊界
 
-- 訪客的解題不會合併到帳號（伺服器沒有明文 flag 可以重播），登入後要再交一次。
+- 公開頁（首頁、題庫列表、儀表板以外的頁）拿到的題目資料不含靶機位址與附件連結，那些只給登入者（`getChallengesForLearner()`）。
 - `challenges.base_solves` 與 `events.base_registered` 是「初始顯示數據」，會和真實數字相加，正式營運後把它們歸零。
 - 示範帳號的 XP 是 seed 寫進 `xp_ledger` 的兩筆 `reason = "admin"` 紀錄，label 有標「示範資料」。
 - 本機 PGlite 裡有測試時留下的帳號（tester、helper、dev-admin、e2e-user）與一則測試問題；`pnpm db:reset` 後重跑 `pnpm dev` 就會回到乾淨的示範資料（先停掉 dev server，PGlite 一次只能一個程序開）。

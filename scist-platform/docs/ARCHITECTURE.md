@@ -44,7 +44,7 @@ flowchart LR
 | `src/lib/permissions.ts` | 四個角色的能力對照表。API、守門、側邊欄、按鈕都讀它 |
 | `src/components/**` | UI 元件；`admin/` 是後台專用；`progress-sync.tsx` 負責把 session 同步進學員端狀態 |
 | `src/admin/` | 後台的資料介面 `AdminApi`（HTTP 版與本機版）與型別 |
-| `src/store/progress.ts` | 學員端狀態：訪客存 localStorage；登入後每個動作鏡射到 API，並從 `/api/me` 回填 |
+| `src/store/progress.ts` | 學員端狀態：只有登入後才有內容，每個動作鏡射到 API，並從 `/api/me` 回填。沒有 session 時是空的，所有寫入動作直接不做事 |
 | `src/lib/api.ts` | 前端呼叫自家 API 的小工具 |
 | `src/data/*.ts` | 型別、常數（類別、學校、贊助方案）與示範內容；示範內容只用來 seed |
 | `src/server/db/` | Drizzle schema、連線、migration、seed |
@@ -71,7 +71,8 @@ flowchart LR
 ## 一個請求怎麼走
 
 - **前台頁面**：Server Component 呼叫 repo（例如 `getTracksPublic()`），拿到跟 `src/data` 一樣形狀的物件，直接渲染。互動元件（播放器、flag 提交、問答）是 client component，透過 `/api/*` 寫入。
-- **學員狀態**：`ProgressSync` 在每次載入與分頁回到前景時打 `GET /api/me`。有 session 就用回應覆蓋本機 store（伺服器為準）；沒有就當訪客。訪客第一次登入時，瀏覽器裡的檢查站、看課進度、筆記會重播到帳號。
+- **學員狀態**：`ProgressSync` 在每次載入與分頁回到前景時打 `GET /api/me`。有 session 就用回應覆蓋本機 store（伺服器為準）；沒有就清空。沒有訪客進度，也沒有合併。
+- **登入牆**：`src/proxy.ts` 擋 `/dashboard`、`/learn/[track]/[lesson]`、`/challenges/[slug]`，沒 session 導回 `/?login=1&next=原路徑`。`next` 一律過 `src/lib/safe-next.ts`，只收站內路徑。公開頁上的報名、發問按鈕改叫 `requestLogin()` 開登入框。
 - **後台**：client component 透過 `AdminApi.http` 打 `/api/admin/*`；`proxy.ts` 先確認 cookie 裡的角色進不進得了後台，API 再各自 `requireCap`。
 
 ## 登入與權限
