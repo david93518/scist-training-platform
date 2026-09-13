@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock, Ban } from "lucide-react";
 import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
@@ -39,14 +39,15 @@ function readIntent(params: Pick<URLSearchParams, "has" | "get">): LoginIntent {
   return { open: true, reason: reason === "admin" || (next?.startsWith("/admin") ?? false) ? "admin" : reason, next };
 }
 
-/** Drops ?login and ?next from the address bar so a refresh does not reopen the dialog. */
-function clearIntentFromUrl() {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("login") && !url.searchParams.has("next")) return;
-  url.searchParams.delete("login");
-  url.searchParams.delete("next");
-  window.history.replaceState(window.history.state, "", url.pathname + (url.search || "") + url.hash);
+/** Drops ?login and ?next through the Next router so useSearchParams() sees it. */
+function stripLoginQuery(pathname: string, params: URLSearchParams, replace: (href: string) => void) {
+  if (!params.has("login") && !params.has("next")) return;
+  const next = new URLSearchParams(params.toString());
+  next.delete("login");
+  next.delete("next");
+  const q = next.toString();
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  replace(pathname + (q ? "?" + q : "") + hash);
 }
 
 const LOGIN_EVENT = "scist:login";
@@ -354,6 +355,8 @@ export function LoginMenu() {
   // 用到一半被停權時 /api/me 會回這個旗標，直接把說明彈出來
   const banned = useProgress((s) => s.banned);
   const dismissBanned = useProgress((s) => s.dismissBanned);
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   /**
    * The gate in src/proxy.ts answers a gated page with a redirect to
@@ -361,14 +364,20 @@ export function LoginMenu() {
    * component never unmounts — reading the query once at mount meant the
    * dialog only appeared on a full page load. Derive it from the live search
    * params instead, and remember which query string the reader dismissed so
-   * closing it sticks without re-opening on the next render.
+   * closing it sticks without re-opening on the next render. Forget that
+   * dismissal once the login query is gone, otherwise a later redirect to
+   * the same `?login=1&next=…` stays closed for the life of the header.
    */
   const urlKey = searchParams.toString();
   const urlIntent = useMemo(() => readIntent(searchParams), [searchParams]);
   const [manual, setManual] = useState<LoginIntent | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const intent: LoginIntent = manual ?? (urlIntent.open && dismissedKey !== urlKey ? urlIntent : CLOSED);
   const [menu, setMenu] = useState(false);
+  const intent: LoginIntent = manual ?? (urlIntent.open && dismissedKey !== urlKey ? urlIntent : CLOSED);
+
+  useEffect(() => {
+    if (!urlIntent.open && dismissedKey !== null) setDismissedKey(null);
+  }, [urlIntent.open, dismissedKey]);
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
   const canAdmin = can(role, "admin.enter");
@@ -387,7 +396,7 @@ export function LoginMenu() {
     setManual(null);
     setDismissedKey(urlKey);
     dismissBanned();
-    clearIntentFromUrl();
+    stripLoginQuery(pathname, new URLSearchParams(urlKey), (href) => router.replace(href, { scroll: false }));
   };
   const openPlain = () => setManual({ open: true, reason: null, next: null });
 
