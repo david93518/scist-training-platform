@@ -2,10 +2,10 @@ import { ArrowRight, Flame, Trophy, ShieldCheck } from "lucide-react";
 import { SectionHeading, LinkButton, HexAvatar } from "@/components/ui/primitives";
 import { PlayerRow } from "@/components/leaderboard/player-row";
 import { HexField } from "@/components/ui/hex-field";
-import type { Player } from "@/data/players";
+import { playerName, type Player } from "@/data/players";
 import { schoolById } from "@/data/schools";
 import { ladder, rankFor, type Rank } from "@/lib/xp";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 const PODIUM = [
   { place: 2, color: "#cfd8e3", size: 64, height: 72 },
@@ -95,6 +95,7 @@ export function LeaderboardPreview({ players, ranks }: { players: Player[]; rank
                   if (!player) return null;
                   const school = schoolById(player.schoolId);
                   const rank = rankFor(player.xp, ladderRanks);
+                  const name = playerName(player);
                   return (
                     <div key={p.place} className="flex flex-col items-center">
                       <div className="relative">
@@ -116,8 +117,8 @@ export function LeaderboardPreview({ players, ranks }: { players: Player[]; rank
                           #{p.place}
                         </span>
                       </div>
-                      <div className="mt-4 flex items-center gap-1 font-mono text-[14px] font-bold">
-                        {player.handle}
+                      <div className={cn("mt-4 flex items-center gap-1 text-[14px] font-bold", name === player.handle && "font-mono")}>
+                        {name}
                         {player.isAssistant ? (
                           <ShieldCheck size={12} className="text-blue" />
                         ) : null}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import type { Challenge } from "@/data/challenges";
 import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
+import { HINT_XP_SHORTAGE } from "@/lib/hint-copy";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +18,7 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
   const revealed = useProgress((s) => s.revealedHints[challenge.slug]);
   const reveal = useProgress((s) => s.revealHint);
   const authenticated = useProgress((s) => s.authenticated);
+  const xp = useProgress((s) => s.xp);
   const hydrated = useHydrated();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
         {challenge.hints.map((h, i) => {
           const isOpen = open.includes(h.id);
           const prevOpen = i === 0 || open.includes(challenge.hints[i - 1].id);
+          const short = hydrated && authenticated && prevOpen && h.cost > 0 && h.cost > xp;
           return (
             <div
               key={h.id}
@@ -102,6 +105,8 @@ export function HintsPanel({ challenge }: { challenge: Challenge }) {
                     載入中
                   </p>
                 )
+              ) : short ? (
+                <p className="mt-2.5 text-[12.5px] leading-relaxed text-fg-2">{HINT_XP_SHORTAGE}</p>
               ) : (
                 <Button
                   variant="outline"

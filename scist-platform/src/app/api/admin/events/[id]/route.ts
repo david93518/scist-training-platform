@@ -17,11 +17,12 @@ export const PUT = route(async (req: Request, ctx: RouteContext<"/api/admin/even
   return json(saved);
 });
 
-export const DELETE = route(async (_req: Request, ctx: RouteContext<"/api/admin/events/[id]">) => {
+export const DELETE = route(async (req: Request, ctx: RouteContext<"/api/admin/events/[id]">) => {
   const user = await requireCap("content.delete");
   const { id } = await ctx.params;
   const before = await findEventAdmin(id);
-  await deleteEvent(id);
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  await deleteEvent(id, force);
   await audit(user.id, "delete", "event", id, describeDelete(before, id));
   return noContent();
 });

@@ -2,6 +2,8 @@
 export interface Player {
   id: string;
   handle: string;
+  /** 個人資料裡的暱稱。沒設時排行榜退回顯示帳號。 */
+  displayName?: string | null;
   schoolId: string;
   xp: number;
   weeklyXp: number;
@@ -45,6 +47,12 @@ export const PLAYERS: Player[] = [
   { id: "p29", handle: "toto", schoolId: "nksh", xp: 310, weeklyXp: 90, solves: 3, streak: 1 },
   { id: "p30", handle: "hana", schoolId: "cygsh", xp: 180, weeklyXp: 60, solves: 2, streak: 1 },
 ];
+
+/** 排行榜上要給人看的名字：有暱稱用暱稱，否則用帳號。 */
+export function playerName(player: { handle: string; displayName?: string | null }) {
+  const name = player.displayName?.trim();
+  return name || player.handle;
+}
 
 export function byAllTime() {
   return [...PLAYERS].sort((a, b) => b.xp - a.xp);

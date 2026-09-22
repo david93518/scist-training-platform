@@ -1,18 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Plus, Pencil } from "lucide-react";
 import { getAdminApi } from "@/admin/api";
 import { Icon } from "@/components/ui/icon";
 import { buttonClass, DifficultyBadge } from "@/components/ui/primitives";
 import { PageTitle, StatusBadge, ToastHost, useAsync, useToast } from "@/components/admin/ui";
-import type { AdminTrack } from "@/admin/types";
+import type { AdminTrack, Status } from "@/admin/types";
+import { cn } from "@/lib/utils";
 
 export function TracksAdmin() {
   const api = getAdminApi();
   const toast = useToast((s) => s.push);
   const tracks = useAsync(() => api.tracks.list());
   const lessons = useAsync(() => api.lessons.list());
+  const [status, setStatus] = useState<"all" | Status>("all");
+  const visible = (tracks.data ?? []).filter((t) => status === "all" || t.status === status);
 
   const move = async (t: AdminTrack, d: -1 | 1) => {
     const list = tracks.data ?? [];
@@ -32,7 +36,7 @@ export function TracksAdmin() {
       <PageTitle
         kicker="TRACKS"
         title="學習路徑"
-        desc="五大領域加程式基礎。這裡管名稱、顏色、大綱與章節；課程本身在「課程與影片」上架。"
+        desc="五大領域加程式基礎。這裡管名稱、顏色、大綱與章節；課程本身在「課程與影片」上架。草稿與封存只會隱藏。整條路徑只有管理員能永久刪除，入口在編輯頁。"
         actions={
           <Link href="/admin/tracks/new" className={buttonClass("primary", "sm")}>
             <Plus size={14} />
@@ -41,8 +45,21 @@ export function TracksAdmin() {
         }
       />
 
+      <div className="mb-5 flex w-fit rounded-lg border border-white/[0.08] bg-bg-0 p-0.5">
+        {(["all", "published", "draft", "archived"] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={cn("rounded-md px-2.5 py-1 text-[12px] font-bold", status === s ? "bg-white/[0.1] text-fg" : "text-fg-3")}
+          >
+            {s === "all" ? "全部" : s === "published" ? "已發布" : s === "draft" ? "草稿" : "封存"}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-3">
-        {(tracks.data ?? []).map((t, i, arr) => {
+        {visible.length === 0 ? <p className="text-[13px] text-fg-3">這個狀態底下沒有路徑。</p> : null}
+        {visible.map((t, i, arr) => {
           const count = (lessons.data ?? []).filter((l) => l.trackId === t.id).length;
           const published = (lessons.data ?? []).filter((l) => l.trackId === t.id && l.status === "published").length;
           return (
@@ -70,10 +87,10 @@ export function TracksAdmin() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => move(t, -1)} disabled={i === 0} className="rounded-md p-2 text-fg-3 hover:bg-white/[0.06] hover:text-fg disabled:opacity-30" aria-label="上移">
+                <button onClick={() => move(t, -1)} disabled={status !== "all" || i === 0} className="rounded-md p-2 text-fg-3 hover:bg-white/[0.06] hover:text-fg disabled:opacity-30" aria-label="上移">
                   <ArrowUp size={14} />
                 </button>
-                <button onClick={() => move(t, 1)} disabled={i === arr.length - 1} className="rounded-md p-2 text-fg-3 hover:bg-white/[0.06] hover:text-fg disabled:opacity-30" aria-label="下移">
+                <button onClick={() => move(t, 1)} disabled={status !== "all" || i === arr.length - 1} className="rounded-md p-2 text-fg-3 hover:bg-white/[0.06] hover:text-fg disabled:opacity-30" aria-label="下移">
                   <ArrowDown size={14} />
                 </button>
                 <Link href={"/admin/tracks/" + t.id} className={buttonClass("outline", "sm", "ml-2")}>

@@ -132,6 +132,7 @@ export function TrackEditor({ id }: { id?: string }) {
           <>
             {id && mayDelete ? (
               <ConfirmDelete
+                label="永久刪除"
                 onConfirm={async () => {
                   try {
                     if (!(await deleteWithLearnerWarning((force) => api.tracks.remove(draft.id, force)))) return;
@@ -258,7 +259,14 @@ export function TrackEditor({ id }: { id?: string }) {
         <div className="flex flex-col gap-6">
           <SectionCard title="發布">
             <StatusSelect value={draft.status} onChange={(status) => patch({ status })} />
-            <p className="mt-3 text-[12px] leading-relaxed text-fg-3">草稿不會出現在前台。封存會隱藏路徑但保留學員進度。</p>
+            <p className="mt-3 text-[12px] leading-relaxed text-fg-3">
+              草稿不會出現在前台。封存會隱藏路徑，學員進度還在。這兩種都不是刪除。
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-fg-3">
+              {mayDelete
+                ? "永久刪除在頁面上方。它會拿掉整條路徑、章節和底下的課程。若已有學習進度，會先說明會失去什麼，再確認一次才刪。"
+                : "整條路徑只有管理員能刪。要讓前台看不到，改成草稿或封存就好。"}
+            </p>
           </SectionCard>
 
           <SectionCard title="預覽">

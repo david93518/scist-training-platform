@@ -106,6 +106,7 @@ async function loadPlayersPublic(weekStartsOn: number): Promise<Player[]> {
     .map<Player>((u) => ({
       id: u.id,
       handle: u.handle,
+      displayName: u.displayName,
       schoolId: u.schoolId ?? "",
       xp: Number(totals.find((t) => t.userId === u.id)?.xp ?? 0),
       weeklyXp: Number(weekly.find((w) => w.userId === u.id)?.xp ?? 0),
