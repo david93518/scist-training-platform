@@ -364,20 +364,23 @@ export function LoginMenu() {
    * component never unmounts — reading the query once at mount meant the
    * dialog only appeared on a full page load. Derive it from the live search
    * params instead, and remember which query string the reader dismissed so
-   * closing it sticks without re-opening on the next render. Forget that
-   * dismissal once the login query is gone, otherwise a later redirect to
-   * the same `?login=1&next=…` stays closed for the life of the header.
+   * closing it sticks without re-opening on the next render. That memory is
+   * dropped as soon as the query changes, otherwise a later redirect to the
+   * same `?login=1&next=…` stays closed for the life of the header.
    */
   const urlKey = searchParams.toString();
   const urlIntent = useMemo(() => readIntent(searchParams), [searchParams]);
   const [manual, setManual] = useState<LoginIntent | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  // A dismissal only applies to the query that was on screen when it was closed.
+  // Drop it during render once the address bar moves on, so the next gate
+  // redirect (even to the same next path) opens the dialog again. Doing this
+  // here avoids setState inside an effect.
+  if (dismissedKey !== null && dismissedKey !== urlKey) {
+    setDismissedKey(null);
+  }
   const intent: LoginIntent = manual ?? (urlIntent.open && dismissedKey !== urlKey ? urlIntent : CLOSED);
-
-  useEffect(() => {
-    if (!urlIntent.open && dismissedKey !== null) setDismissedKey(null);
-  }, [urlIntent.open, dismissedKey]);
   const ranks = useRanks();
   const rank = rankFor(xp, ranks);
   const canAdmin = can(role, "admin.enter");
