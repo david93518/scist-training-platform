@@ -643,7 +643,7 @@ export const httpApi: AdminApi = {
   events: {
     list: () => http("/events"),
     save: (e) => http("/events/" + e.id, { method: "PUT", body: json(e) }),
-    remove: (id) => http("/events/" + id, { method: "DELETE" }),
+    remove: (id, force) => http("/events/" + id + (force ? "?force=1" : ""), { method: "DELETE" }),
   },
   instructors: {
     list: () => http("/instructors"),

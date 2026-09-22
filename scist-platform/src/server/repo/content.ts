@@ -403,8 +403,11 @@ export async function saveEvent(input: AdminEvent): Promise<AdminEvent> {
   return toAdminEvent(saved);
 }
 
-export async function deleteEvent(id: string) {
+export async function deleteEvent(id: string, force = false) {
   const db = await getDb();
+  const ev = await db.query.events.findFirst({ where: eq(schema.events.id, id), with: { registrations: true } });
+  if (!ev) return;
+  await refuseIfLearnersDependOnIt(force, ev.title, [["報名", ev.registrations.length]]);
   await db.delete(schema.events).where(eq(schema.events.id, id));
   contentChanged();
 }

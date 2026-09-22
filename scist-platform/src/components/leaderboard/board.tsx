@@ -24,6 +24,7 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
   const [tab, setTab] = useState<Tab>("weekly");
   const xp = useProgress((s) => s.xp);
   const handle = useProgress((s) => s.handle);
+  const displayName = useProgress((s) => s.displayName);
   const schoolId = useProgress((s) => s.schoolId);
   const userId = useProgress((s) => s.userId);
   const authenticated = useProgress((s) => s.authenticated);
@@ -147,8 +148,8 @@ export function Board({ players, schools, resetDay = "週日" }: { players: Play
           <div className="flex items-center gap-3">
             <HexAvatar seed={handle} size={46} />
             <div className="min-w-0">
-              <div className="font-mono text-[15px] font-bold">
-                {handle}
+              <div className={cn("text-[15px] font-bold", !(displayName.trim() && displayName.trim() !== handle) && "font-mono")}>
+                {displayName.trim() || handle}
               </div>
               <div className="text-[12px] text-fg-3">
                 {schoolShort(schoolId)} ·{" "}

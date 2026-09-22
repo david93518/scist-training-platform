@@ -13,6 +13,7 @@ import { getSettings } from "./settings";
 import { expireInstances } from "./ops";
 import { env } from "../env";
 import { weekStart } from "@/lib/timezone";
+import { HINT_XP_SHORTAGE } from "@/lib/hint-copy";
 import { SCHOOLS } from "@/data/schools";
 
 /* ------------------------------ XP ------------------------------ */
@@ -299,13 +300,12 @@ export async function unlockHint(userId: string, slug: string, hintId: string) {
     const prev = await db.query.hintUnlocks.findFirst({ where: and(eq(schema.hintUnlocks.userId, userId), eq(schema.hintUnlocks.hintId, ordered[idx - 1].id)) });
     if (!prev) throw new ApiError(400, "先解鎖上一則提示");
   }
-  // 扣到 0 就停。以前直接扣整筆，XP 只有 10 的人買 60 分的提示會變成 -50，
-  // 然後那個負分就直接出現在公開排行榜上。
+  // 餘額不夠就整筆拒絕。以前會扣到 0 仍解鎖，XP 很少的人等於免費看到提示。
   const balance = await xpOf(userId);
-  const charged = Math.max(0, Math.min(hint.cost, balance));
+  if (hint.cost > 0 && hint.cost > balance) throw new ApiError(400, HINT_XP_SHORTAGE);
   await db.insert(schema.hintUnlocks).values({ userId, hintId });
-  if (charged > 0) await ledger(userId, -charged, "hint", hintId, "解鎖提示 " + ch.name);
-  return { text: hint.text, cost: charged };
+  if (hint.cost > 0) await ledger(userId, -hint.cost, "hint", hintId, "解鎖提示 " + ch.name);
+  return { text: hint.text, cost: hint.cost };
 }
 
 /**
@@ -415,6 +415,7 @@ export async function leaderboard(scope: "weekly" | "alltime" | "schools", weekS
       return {
         id: u.id,
         handle: u.handle,
+        displayName: u.displayName,
         schoolId: u.schoolId,
         school: u.school?.short ?? null,
         role: u.role,

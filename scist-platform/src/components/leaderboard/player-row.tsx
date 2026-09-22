@@ -1,7 +1,7 @@
 import { Flame, ShieldCheck } from "lucide-react";
 import { HexAvatar } from "@/components/ui/primitives";
 import { schoolById } from "@/data/schools";
-import type { Player } from "@/data/players";
+import { playerName, type Player } from "@/data/players";
 import { rankFor, type Rank } from "@/lib/xp";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -39,6 +39,8 @@ export function PlayerRow({
   const school = schoolById(player.schoolId);
   const rank = rankFor(player.xp, ranks);
   const value = metric === "xp" ? player.xp : player.weeklyXp;
+  const name = playerName(player);
+  const showHandle = name !== player.handle;
 
   return (
     <div
@@ -52,14 +54,16 @@ export function PlayerRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate font-mono text-[13.5px] font-bold">
-            {player.handle}
+          <span className={cn("truncate text-[13.5px] font-bold", !showHandle && "font-mono")}>
+            {name}
           </span>
           {player.isAssistant ? (
             <ShieldCheck size={12} className="shrink-0 text-blue" aria-label="助教" />
           ) : null}
         </div>
         <div className="flex items-center gap-2 text-[11.5px] text-fg-3">
+          {showHandle ? <span className="font-mono">@{player.handle}</span> : null}
+          {showHandle ? <span className="h-2.5 w-px bg-line-2" /> : null}
           <span>{school?.short ?? "—"}</span>
           <span className="h-2.5 w-px bg-line-2" />
           <span style={{ color: rank.color }}>{rank.name}</span>
