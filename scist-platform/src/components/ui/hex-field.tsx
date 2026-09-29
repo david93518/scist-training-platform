@@ -8,6 +8,10 @@ import { seeded } from "@/lib/utils";
  * The viewBox is sized close to a real desktop section (about 1660 x 1260 px)
  * and drawn with `slice`, so hexagons render near their native ~50 px size
  * instead of being stretched to fill tall sections.
+ *
+ * The unlit grid is one tiled `<pattern>`, not 896 polygons. Drawing every
+ * cell put ~150 KB of markup on the page — and the same again in the RSC
+ * payload — so the home page shipped 1.5 MB of HTML for three of these.
  */
 export function HexField({
   seed = 7,
@@ -36,23 +40,23 @@ export function HexField({
   const h = 2 * r;
   const rand = seeded(seed);
 
-  const cells: { x: number; y: number; lit: boolean; delay: number; dur: number }[] = [];
-  const litSet = new Set<number>();
-  const total = cols * rows;
   // keep lit cells in the upper two thirds where the mask is bright
   const litRows = Math.max(3, Math.floor(rows * 0.66));
-  while (litSet.size < Math.min(lit, total)) {
+  const litSet = new Set<number>();
+  while (litSet.size < Math.min(lit, litRows * cols)) {
     litSet.add(Math.floor(rand() * litRows) * cols + Math.floor(rand() * cols));
   }
 
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const x = col * w + (row % 2 ? w / 2 : 0);
-      const y = row * (h * 0.75);
-      const i = row * cols + col;
-      cells.push({ x, y, lit: litSet.has(i), delay: rand() * 6, dur: 5 + rand() * 5 });
-    }
-  }
+  const litCells = [...litSet].map((i) => {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    return {
+      x: col * w + (row % 2 ? w / 2 : 0) + w / 2,
+      y: row * (h * 0.75) + h / 2,
+      delay: rand() * 6,
+      dur: 5 + rand() * 5,
+    };
+  });
 
   const width = cols * w + w / 2;
   const height = rows * h * 0.75 + h / 4;
@@ -64,6 +68,21 @@ export function HexField({
     }).join(" ");
 
   const id = "hexfield-" + seed;
+
+  /**
+   * One tile is `w` wide and `3r` tall: an even row centred at (w/2, r) and an
+   * odd row centred at (w, 2.5r). The copies are the neighbours whose hexagons
+   * cross the tile edge — without them the grid shows seams.
+   */
+  const tile: [number, number][] = [
+    [w / 2, r],
+    [w / 2 - w, r],
+    [w / 2 + w, r],
+    [0, 2.5 * r],
+    [w, 2.5 * r],
+    [0, -0.5 * r],
+    [w, -0.5 * r],
+  ];
 
   return (
     <svg
@@ -84,41 +103,37 @@ export function HexField({
         <filter id={id + "-blur"} x="-80%" y="-80%" width="260%" height="260%">
           <feGaussianBlur stdDeviation="9" />
         </filter>
+        <pattern id={id + "-grid"} patternUnits="userSpaceOnUse" width={w} height={3 * r}>
+          {tile.map(([px, py], i) => (
+            <polygon
+              key={i}
+              points={points(px, py, r - 1.5)}
+              fill="none"
+              stroke="rgba(255,255,255,0.075)"
+              strokeWidth="1"
+            />
+          ))}
+        </pattern>
       </defs>
       <g mask={"url(#" + id + ")"}>
-        {cells.map((c, i) => (
-          <polygon
-            key={i}
-            points={points(c.x + w / 2, c.y + h / 2, r - 1.5)}
-            fill="none"
-            stroke="rgba(255,255,255,0.075)"
-            strokeWidth="1"
-          />
-        ))}
-        {cells
-          .filter((c) => c.lit)
-          .map((c, i) => {
-            const anim = "lit " + c.dur + "s ease-in-out " + c.delay + "s infinite";
-            return (
-              <g key={"lit" + i}>
-                <polygon
-                  points={points(c.x + w / 2, c.y + h / 2, r + 4)}
-                  fill={color}
-                  filter={"url(#" + id + "-blur)"}
-                  style={{ animation: anim }}
-                />
-                <polygon
-                  points={points(c.x + w / 2, c.y + h / 2, r - 1.5)}
-                  fill={color}
-                  fillOpacity="0.35"
-                  stroke={color}
-                  strokeOpacity="0.9"
-                  strokeWidth="1"
-                  style={{ animation: anim }}
-                />
-              </g>
-            );
-          })}
+        <rect width={width} height={height} fill={"url(#" + id + "-grid)"} />
+        {litCells.map((c, i) => {
+          const anim = "lit " + c.dur + "s ease-in-out " + c.delay + "s infinite";
+          return (
+            <g key={i}>
+              <polygon points={points(c.x, c.y, r + 4)} fill={color} filter={"url(#" + id + "-blur)"} style={{ animation: anim }} />
+              <polygon
+                points={points(c.x, c.y, r - 1.5)}
+                fill={color}
+                fillOpacity="0.35"
+                stroke={color}
+                strokeOpacity="0.9"
+                strokeWidth="1"
+                style={{ animation: anim }}
+              />
+            </g>
+          );
+        })}
       </g>
     </svg>
   );
