@@ -9,7 +9,8 @@
  * The admin console is gated by role. The API already checks the session on
  * every request; this keeps the HTML shell away from anyone whose role
  * can't use that page — the page ↔ 能力對照表在 src/lib/permissions.ts，
- * 側邊欄讀的是同一張表。
+ * 側邊欄讀的是同一張表。進不來的人（含未登入）只是回到首頁：後台不是對外
+ * 功能，不需要邀請訪客登入，也不用告訴他們少了哪個角色。
  *
  * /admin?as=… 只有 ENABLE_DEV_LOGIN=1 且非 production 才會簽開發 session。
  * NEXT_PUBLIC_ADMIN_API=local 關掉後台這道門，因為那時後台走瀏覽器儲存、
@@ -33,11 +34,19 @@ async function roleFromCookie(token: string | undefined) {
 }
 
 /** Home page with the login dialog open; `next` brings the user back afterwards. */
-function toLogin(url: NextRequest["nextUrl"], reason: "1" | "admin") {
+function toLogin(url: NextRequest["nextUrl"]) {
   const home = new URL("/", url);
-  home.searchParams.set("login", reason);
+  home.searchParams.set("login", "1");
   home.searchParams.set("next", url.pathname + url.search);
   return NextResponse.redirect(home);
+}
+
+/**
+ * 後台不對外宣傳。沒有權限的人（含未登入）就只是回首頁，不開登入框，也不
+ * 告訴對方這裡有一個後台、需要什麼角色才進得來。
+ */
+function toHome(url: NextRequest["nextUrl"]) {
+  return NextResponse.redirect(new URL("/", url));
 }
 
 export async function proxy(req: NextRequest) {
@@ -46,7 +55,7 @@ export async function proxy(req: NextRequest) {
 
   if (!url.pathname.startsWith("/admin")) {
     // learner pages: any account will do, no account will not
-    return role ? NextResponse.next() : toLogin(url, "1");
+    return role ? NextResponse.next() : toLogin(url);
   }
 
   if (process.env.NEXT_PUBLIC_ADMIN_API === "local") return NextResponse.next();
@@ -74,7 +83,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  return toLogin(url, "admin");
+  return toHome(url);
 }
 
 export const config = {

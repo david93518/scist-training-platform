@@ -1,20 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
-import { X, LogOut, LayoutDashboard, ShieldCheck, Zap, ChevronDown, Loader2, Lock, Ban } from "lucide-react";
-import { Button, HexAvatar, buttonClass } from "@/components/ui/primitives";
+import { X, LogOut, Loader2, Lock, Ban } from "lucide-react";
+import { Button, buttonClass } from "@/components/ui/primitives";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { SCHOOLS } from "@/data/schools";
 import { useProgress, useHydrated, refreshProfile } from "@/store/progress";
 import { api } from "@/lib/api";
 import { bannedNotice } from "@/lib/ban-notice";
 import { safeNextPath } from "@/lib/safe-next";
 import { can, ROLE_LABEL } from "@/lib/permissions";
-import { rankFor } from "@/lib/xp";
-import { useRanks, useRuntimeFlags, useSettings } from "@/components/settings-provider";
-import { formatNumber } from "@/lib/utils";
+import { useRuntimeFlags, useSettings } from "@/components/settings-provider";
 
 /**
  * Where the dialog was asked to send the user afterwards. The admin gate
@@ -343,15 +341,10 @@ function LoginDialogBody({ onClose, next, reason }: { onClose: () => void; next:
   );
 }
 
-/** Header control: XP pill + avatar menu, or a login button for guests. */
+/** Header control: the account menu, or a login button for guests. */
 export function LoginMenu() {
   const hydrated = useHydrated();
-  const handle = useProgress((s) => s.handle);
-  const displayName = useProgress((s) => s.displayName);
-  const role = useProgress((s) => s.role);
-  const xp = useProgress((s) => s.xp);
   const authenticated = useProgress((s) => s.authenticated);
-  const logout = useProgress((s) => s.logout);
   // 用到一半被停權時 /api/me 會回這個旗標，直接把說明彈出來
   const banned = useProgress((s) => s.banned);
   const dismissBanned = useProgress((s) => s.dismissBanned);
@@ -372,7 +365,6 @@ export function LoginMenu() {
   const urlIntent = useMemo(() => readIntent(searchParams), [searchParams]);
   const [manual, setManual] = useState<LoginIntent | null>(null);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const [menu, setMenu] = useState(false);
   // A dismissal only applies to the query that was on screen when it was closed.
   // Drop it during render once the address bar moves on, so the next gate
   // redirect (even to the same next path) opens the dialog again. Doing this
@@ -381,9 +373,6 @@ export function LoginMenu() {
     setDismissedKey(null);
   }
   const intent: LoginIntent = manual ?? (urlIntent.open && dismissedKey !== urlKey ? urlIntent : CLOSED);
-  const ranks = useRanks();
-  const rank = rankFor(xp, ranks);
-  const canAdmin = can(role, "admin.enter");
 
   // requestLogin() from any component opens the dialog with a destination
   useEffect(() => {
@@ -426,59 +415,9 @@ export function LoginMenu() {
   }
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setMenu((v) => !v)}
-        className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 pl-1.5 pr-3 transition-colors hover:border-accent/50"
-        aria-haspopup="menu"
-        aria-expanded={menu}
-      >
-        <HexAvatar seed={handle} size={26} />
-        <span className="hidden text-[13px] font-bold sm:inline">{displayName || handle}</span>
-        <span className="hidden items-center gap-1 font-mono text-[12px] tabular-nums text-accent sm:flex">
-          <Zap size={11} />
-          {formatNumber(xp)}
-        </span>
-        <ChevronDown size={13} className="text-fg-3" />
-      </button>
-
-      {menu ? (
-        <>
-          {createPortal(<div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />, document.body)}
-          <div className="card absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden p-1.5" role="menu">
-            <div className="px-3 py-2.5">
-              <div className="text-[13px] font-bold">{displayName || handle}</div>
-              {displayName && displayName !== handle ? <div className="font-mono text-[11px] text-fg-3">@{handle}</div> : null}
-              <div className="text-[11.5px]" style={{ color: rank.color }}>
-                {rank.name} · {formatNumber(xp)} XP · {ROLE_LABEL[role]}
-              </div>
-            </div>
-            <div className="my-1 h-px bg-white/[0.06]" />
-            <Link href="/dashboard" onClick={() => setMenu(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] hover:bg-white/[0.05]">
-              <LayoutDashboard size={14} className="text-fg-3" />
-              我的進度
-            </Link>
-            {canAdmin ? (
-              <Link href="/admin" onClick={() => setMenu(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] hover:bg-white/[0.05]">
-                <ShieldCheck size={14} className="text-accent" />
-                後台管理
-              </Link>
-            ) : null}
-            <div className="my-1 h-px bg-white/[0.06]" />
-            <button
-              onClick={() => {
-                setMenu(false);
-                void logout();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] text-fg-2 hover:bg-white/[0.05]"
-            >
-              <LogOut size={14} />
-              登出
-            </button>
-          </div>
-        </>
-      ) : null}
+    <>
+      <AccountMenu />
       {dialog}
-    </div>
+    </>
   );
 }

@@ -22,8 +22,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
-import { buttonClass, HexAvatar } from "@/components/ui/primitives";
+import { buttonClass } from "@/components/ui/primitives";
 import { LoginDialog } from "@/components/layout/login-menu";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { useProgress, useHydrated } from "@/store/progress";
 import { getAdminApi } from "@/admin/api";
 import { can, capForAdminPath, landingFor, ROLE_COLOR, ROLE_LABEL, type Capability, type Role } from "@/lib/permissions";
@@ -247,10 +248,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             >
               {ROLE_LABEL[role].toUpperCase()}
             </span>
-            <button onClick={() => setLogin(true)} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] py-1.5 pl-1.5 pr-3 hover:border-white/20">
-              <HexAvatar seed={handle} size={26} />
-              <span className="font-mono text-[12.5px] font-bold">{handle}</span>
-            </button>
+            <AccountMenu showXp={false} />
           </div>
         </header>
 
@@ -296,8 +294,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           )}
         </main>
       </div>
-
-      <LoginDialog open={login} onClose={() => setLogin(false)} />
     </div>
   );
 }
